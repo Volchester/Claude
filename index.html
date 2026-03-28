@@ -115,7 +115,6 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
 .signal.sell { background: var(--red-bg); color: var(--red); border: 1px solid #ef535033; }
 .signal.hold { background: #f9a82518; color: var(--yellow); border: 1px solid #f9a82533; }
 
-/* Upside / downside row */
 .upside-row {
   display: flex; align-items: center; justify-content: space-between;
   background: var(--surface2); border-radius: 6px;
@@ -334,7 +333,7 @@ function getSignal(current, fair, tol) {
   if (!current || !fair) return { type: 'unknown', pct: null, diff: null, upside: null };
   const pct    = ((current - fair) / fair) * 100;
   const diff   = current - fair;
-  const upside = (fair / current - 1) * 100;   // % rust/pokles potrebny k dosazeni FV
+  const upside = (fair / current - 1) * 100;
   let type;
   if (pct < -tol) type = 'undervalued';
   else if (pct > tol) type = 'overvalued';
@@ -411,23 +410,13 @@ function render() {
     const signalCls   = { undervalued: 'buy', overvalued: 'sell', fair: 'hold', unknown: 'hold' }[sig.type];
     const cardCls     = { undervalued: 'undervalued', overvalued: 'overvalued', fair: 'fair', unknown: '' }[sig.type];
 
-    // Upside / downside to FV label
     let upsideHtml = '';
-    if (sig.upside !== null) {
-      const isGrowth = sig.upside > 0;
-      const color = sig.type === 'undervalued' ? 'var(--green)' : sig.type === 'overvalued' ? 'var(--red)' : 'var(--yellow)';
-      const label = sig.type === 'undervalued'
-        ? 'Potrebuje rust k FV'
-        : sig.type === 'overvalued'
-          ? 'Potrebuje pokles k FV'
-          : 'V pasmu fair value';
-      const valStr = sig.type === 'fair'
-        ? ''
-        : `${fmtPct(sig.upside)} ($${fmt(Math.abs(s.fair - curr))})`;
+    if (sig.upside !== null && sig.type !== 'fair') {
+      const color = sig.type === 'undervalued' ? 'var(--green)' : 'var(--red)';
       upsideHtml = `
         <div class="upside-row">
-          <span class="upside-label">${label}</span>
-          <span class="upside-val" style="color:${color}">${valStr}</span>
+          <span class="upside-label">Potenciální růst</span>
+          <span class="upside-val" style="color:${color}">${fmtPct(sig.upside)} ($${fmt(Math.abs(s.fair - curr))})</span>
         </div>`;
     }
 

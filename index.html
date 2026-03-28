@@ -99,7 +99,7 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
 .current-price { font-size: 1.1rem; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
 .price-change { font-size: 0.75rem; margin-top: 1px; font-variant-numeric: tabular-nums; }
 
-.fv-row { display: flex; align-items: center; gap: 0.5rem; }
+.fv-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
 .fv-label { font-size: 0.68rem; color: var(--muted); white-space: nowrap; }
 .fv-bar-wrap { flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
 .fv-bar { height: 100%; border-radius: 2px; transition: width 0.4s; }
@@ -114,6 +114,15 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
 .signal.buy { background: var(--green-bg); color: var(--green); border: 1px solid #26a69a33; }
 .signal.sell { background: var(--red-bg); color: var(--red); border: 1px solid #ef535033; }
 .signal.hold { background: #f9a82518; color: var(--yellow); border: 1px solid #f9a82533; }
+
+/* Upside / downside row */
+.upside-row {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--surface2); border-radius: 6px;
+  padding: 0.375rem 0.625rem; margin-top: 0.25rem;
+}
+.upside-label { font-size: 0.68rem; color: var(--muted); }
+.upside-val { font-size: 0.82rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 .card-actions {
   display: flex; gap: 0.5rem; margin-top: 0.75rem;
@@ -261,7 +270,6 @@ async function fetchPrice(symbol) {
   const stooqJson = `https://stooq.com/q/l/?s=${s}&f=sd2t2ohlcv&h&e=json`;
   const stooqCsv  = `https://stooq.com/q/l/?s=${s}&f=sd2t2ohlcv&h&e=csv`;
 
-  // Method 1: allorigins + JSON
   try {
     const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(stooqJson)}`,
       { signal: AbortSignal.timeout(9000) });
@@ -275,7 +283,6 @@ async function fetchPrice(symbol) {
     }
   } catch {}
 
-  // Method 2: corsproxy + JSON
   try {
     const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(stooqJson)}`,
       { signal: AbortSignal.timeout(9000) });
@@ -288,7 +295,6 @@ async function fetchPrice(symbol) {
     }
   } catch {}
 
-  // Method 3: allorigins + CSV
   try {
     const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(stooqCsv)}`,
       { signal: AbortSignal.timeout(9000) });
@@ -314,10 +320,8 @@ async function doRefresh() {
   btn.innerHTML = '<span class="spin">↻</span>';
   btn.disabled = true;
   document.getElementById('updateTime').textContent = 'Obnovuji...';
-
   const results = await Promise.all(list.map(s => fetchPrice(s.symbol)));
   list.forEach((s, i) => { if (results[i]) prices[s.symbol] = results[i]; });
-
   const now = new Date();
   document.getElementById('updateTime').textContent =
     `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -327,14 +331,15 @@ async function doRefresh() {
 }
 
 function getSignal(current, fair, tol) {
-  if (!current || !fair) return { type: 'unknown', pct: null, diff: null };
-  const pct = ((current - fair) / fair) * 100;
-  const diff = current - fair;
+  if (!current || !fair) return { type: 'unknown', pct: null, diff: null, upside: null };
+  const pct    = ((current - fair) / fair) * 100;
+  const diff   = current - fair;
+  const upside = (fair / current - 1) * 100;   // % rust/pokles potrebny k dosazeni FV
   let type;
   if (pct < -tol) type = 'undervalued';
   else if (pct > tol) type = 'overvalued';
   else type = 'fair';
-  return { type, pct, diff };
+  return { type, pct, diff, upside };
 }
 
 function fmt(n, d = 2) {
@@ -392,8 +397,8 @@ function render() {
     const realIndex = list.findIndex(x => x.id === s.id);
     const p = prices[s.symbol];
     const curr = p?.price ?? null;
-    const chg = p?.change1d ?? null;
-    const sig = getSignal(curr, s.fair, s.tol || 5);
+    const chg  = p?.change1d ?? null;
+    const sig  = getSignal(curr, s.fair, s.tol || 5);
 
     let barPct = 50, barClass = 'fair';
     if (sig.pct !== null) {
@@ -405,6 +410,26 @@ function render() {
     const signalLabel = { undervalued: 'NAKUP', overvalued: 'PRODEJ', fair: 'FAIR', unknown: '—' }[sig.type];
     const signalCls   = { undervalued: 'buy', overvalued: 'sell', fair: 'hold', unknown: 'hold' }[sig.type];
     const cardCls     = { undervalued: 'undervalued', overvalued: 'overvalued', fair: 'fair', unknown: '' }[sig.type];
+
+    // Upside / downside to FV label
+    let upsideHtml = '';
+    if (sig.upside !== null) {
+      const isGrowth = sig.upside > 0;
+      const color = sig.type === 'undervalued' ? 'var(--green)' : sig.type === 'overvalued' ? 'var(--red)' : 'var(--yellow)';
+      const label = sig.type === 'undervalued'
+        ? 'Potrebuje rust k FV'
+        : sig.type === 'overvalued'
+          ? 'Potrebuje pokles k FV'
+          : 'V pasmu fair value';
+      const valStr = sig.type === 'fair'
+        ? ''
+        : `${fmtPct(sig.upside)} ($${fmt(Math.abs(s.fair - curr))})`;
+      upsideHtml = `
+        <div class="upside-row">
+          <span class="upside-label">${label}</span>
+          <span class="upside-val" style="color:${color}">${valStr}</span>
+        </div>`;
+    }
 
     return `
     <div class="stock-card ${cardCls}" onclick="toggleExpand('card-${s.id}')">
@@ -426,11 +451,8 @@ function render() {
         </div>
         <span class="signal ${signalCls}">${signalLabel}</span>
       </div>
-      ${sig.diff !== null ? `
-        <div style="font-size:0.72rem;color:var(--muted);margin-top:0.375rem">
-          ${sig.diff >= 0 ? 'O $'+fmt(Math.abs(sig.diff))+' nad FV' : 'O $'+fmt(Math.abs(sig.diff))+' pod FV'}
-          ${s.note ? ' · <em>'+s.note+'</em>' : ''}
-        </div>` : s.note ? `<div style="font-size:0.72rem;color:var(--muted);margin-top:0.375rem"><em>${s.note}</em></div>` : ''}
+      ${upsideHtml}
+      ${s.note ? `<div style="font-size:0.72rem;color:var(--muted);margin-top:0.375rem"><em>${s.note}</em></div>` : ''}
       <div class="card-actions" id="card-${s.id}" style="display:none">
         <button class="card-btn" onclick="event.stopPropagation();openEditModal(${realIndex})">Upravit FV</button>
         <button class="card-btn" onclick="event.stopPropagation();deleteItem(${realIndex})" style="color:var(--red)">Odebrat</button>

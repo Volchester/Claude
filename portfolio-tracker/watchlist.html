@@ -213,6 +213,7 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
   <div class="header-right">
     <span class="update-time" id="updateTime">—</span>
     <button class="btn btn-ghost" id="refreshBtn" onclick="doRefresh()">↻</button>
+    <button class="btn btn-ghost" onclick="showApiSetup()" title="Nastaveni API klice" style="padding:0.5rem 0.6rem;">⚙</button>
     <button class="btn btn-accent" onclick="openAddModal()">+ Pridat</button>
   </div>
 </header>
@@ -226,6 +227,42 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
   </div>
   <div id="list"></div>
 </main>
+
+<!-- API Key Setup Screen -->
+<div id="setupScreen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:200;flex-direction:column;align-items:center;justify-content:center;padding:2rem;">
+  <div style="max-width:360px;width:100%;text-align:center;">
+    <div style="font-size:2.5rem;margin-bottom:1rem;">📈</div>
+    <h2 style="font-size:1.25rem;font-weight:700;color:#fff;margin-bottom:0.5rem;">Jeden krok k live cenam</h2>
+    <p style="color:var(--muted);font-size:0.875rem;line-height:1.6;margin-bottom:1.75rem;">
+      Live ceny akcii vyzaduji bezplatny API klic od Finnhub.<br>
+      Zadna kreditni karta, jen email.
+    </p>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.25rem;text-align:left;margin-bottom:1.5rem;">
+      <div style="font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.875rem;">Jak ziskat klic (30 sekund)</div>
+      <div style="font-size:0.875rem;color:var(--text);line-height:2;">
+        <div>1. Otevri <strong style="color:#fff;">finnhub.io</strong></div>
+        <div>2. Klikni <strong style="color:#fff;">Get free API key</strong></div>
+        <div>3. Registruj se emailem</div>
+        <div>4. Zkopiruj klic a vloz ho sem</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:1rem;">
+      <input id="apiKeyInput" placeholder="Vloz API klic zde..."
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9rem;padding:0.75rem;outline:none;text-align:center;"
+        onkeydown="if(event.key==='Enter')saveKey()">
+    </div>
+
+    <button class="btn btn-accent" onclick="saveKey()" style="width:100%;padding:0.875rem;font-size:0.9rem;">
+      Ulozit a spustit
+    </button>
+
+    <button onclick="hideApiSetup()" style="background:none;border:none;color:var(--muted);font-size:0.8rem;margin-top:1rem;cursor:pointer;">
+      Preskocit (bez live cen)
+    </button>
+  </div>
+</div>
 
 <!-- Add / Edit Modal -->
 <div class="overlay" id="overlay" onclick="overlayClick(event)">
@@ -280,37 +317,29 @@ function load() {
 }
 function save(d) { localStorage.setItem('fv_watchlist', JSON.stringify(d)); }
 
-// ── Price fetching ────────────────────────────────────────────────────────────
-let prices = {}; // symbol -> { price, change1d }
+function getApiKey() { return localStorage.getItem('finnhub_key') || ''; }
+function saveApiKey(k) { localStorage.setItem('finnhub_key', k.trim()); }
+
+// ── Price fetching (Finnhub) ──────────────────────────────────────────────────
+let prices = {};
 let filter = 'all';
 
-function parseYahooChart(d) {
-  const meta = d?.chart?.result?.[0]?.meta;
-  if (!meta?.regularMarketPrice) return null;
-  const prev = meta.chartPreviousClose || meta.previousClose;
-  const curr = meta.regularMarketPrice;
-  const change1d = prev ? ((curr - prev) / prev) * 100 : null;
-  return { price: curr, change1d };
-}
-
 async function fetchPrice(symbol) {
-  const path = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=2d`;
-  const path2 = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=2d`;
-  const proxy = `https://corsproxy.io/?url=${encodeURIComponent(path)}`;
-
-  // Try direct endpoints first, then CORS proxy as fallback
-  for (const url of [path, path2, proxy]) {
-    try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
-      if (!r.ok) continue;
-      const result = parseYahooChart(await r.json());
-      if (result) return result;
-    } catch { /* try next */ }
-  }
-  return null;
+  const key = getApiKey();
+  if (!key) return null;
+  try {
+    const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`,
+      { signal: AbortSignal.timeout(7000) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d.c || d.c === 0) return null;
+    const change1d = d.pc ? ((d.c - d.pc) / d.pc) * 100 : null;
+    return { price: d.c, change1d };
+  } catch { return null; }
 }
 
 async function doRefresh() {
+  if (!getApiKey()) { showApiSetup(); return; }
   const list = load();
   if (!list.length) return;
   const btn = document.getElementById('refreshBtn');
@@ -327,6 +356,21 @@ async function doRefresh() {
   btn.innerHTML = '↻';
   btn.disabled = false;
   render();
+}
+
+// ── API Key setup screen ──────────────────────────────────────────────────────
+function showApiSetup() {
+  document.getElementById('setupScreen').style.display = 'flex';
+}
+function hideApiSetup() {
+  document.getElementById('setupScreen').style.display = 'none';
+}
+function saveKey() {
+  const k = document.getElementById('apiKeyInput').value.trim();
+  if (!k) return;
+  saveApiKey(k);
+  hideApiSetup();
+  doRefresh();
 }
 
 // ── Signal logic ──────────────────────────────────────────────────────────────
@@ -547,16 +591,18 @@ function onSymbolInput() {
 }
 
 async function searchAc(q) {
+  const key = getApiKey();
+  if (!key) { closeAc(); return; }
   try {
-    const r = await fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=6&newsCount=0`);
+    const r = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${key}`);
     const d = await r.json();
-    const items = (d.quotes || []).filter(x => x.symbol && x.quoteType !== 'CRYPTOCURRENCY').slice(0, 5);
+    const items = (d.result || []).filter(x => x.type === 'Common Stock' || x.type === 'ETP').slice(0, 5);
     if (!items.length) { closeAc(); return; }
     const list = document.getElementById('acList');
     list.innerHTML = items.map(x =>
-      `<div class="ac-item" onclick="pickAc('${x.symbol}','${(x.shortname||x.longname||'').replace(/'/g,"\\'")}')">
+      `<div class="ac-item" onclick="pickAc('${x.symbol}','${(x.description||'').replace(/'/g,"\\'")}')">
         <span class="ac-sym">${x.symbol}</span>
-        <span class="ac-name">${x.shortname || x.longname || ''}</span>
+        <span class="ac-name">${x.description || ''}</span>
       </div>`
     ).join('');
     list.classList.add('open');
@@ -575,7 +621,8 @@ function closeAc() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 render();
-doRefresh();
+if (!getApiKey()) showApiSetup();
+else doRefresh();
 </script>
 </body>
 </html>

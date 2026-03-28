@@ -213,7 +213,6 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
   <div class="header-right">
     <span class="update-time" id="updateTime">—</span>
     <button class="btn btn-ghost" id="refreshBtn" onclick="doRefresh()">↻</button>
-    <button class="btn btn-ghost" onclick="showApiSetup()" title="Nastaveni API klice" style="padding:0.5rem 0.6rem;">⚙</button>
     <button class="btn btn-accent" onclick="openAddModal()">+ Pridat</button>
   </div>
 </header>
@@ -228,42 +227,6 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
   <div id="list"></div>
 </main>
 
-<!-- API Key Setup Screen -->
-<div id="setupScreen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:200;flex-direction:column;align-items:center;justify-content:center;padding:2rem;">
-  <div style="max-width:360px;width:100%;text-align:center;">
-    <div style="font-size:2.5rem;margin-bottom:1rem;">📈</div>
-    <h2 style="font-size:1.25rem;font-weight:700;color:#fff;margin-bottom:0.5rem;">Jeden krok k live cenam</h2>
-    <p style="color:var(--muted);font-size:0.875rem;line-height:1.6;margin-bottom:1.75rem;">
-      Live ceny akcii vyzaduji bezplatny API klic od Finnhub.<br>
-      Zadna kreditni karta, jen email.
-    </p>
-
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.25rem;text-align:left;margin-bottom:1.5rem;">
-      <div style="font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.875rem;">Jak ziskat klic (30 sekund)</div>
-      <div style="font-size:0.875rem;color:var(--text);line-height:2;">
-        <div>1. Otevri <strong style="color:#fff;">finnhub.io</strong></div>
-        <div>2. Klikni <strong style="color:#fff;">Get free API key</strong></div>
-        <div>3. Registruj se emailem</div>
-        <div>4. Zkopiruj klic a vloz ho sem</div>
-      </div>
-    </div>
-
-    <div style="margin-bottom:1rem;">
-      <input id="apiKeyInput" placeholder="Vloz API klic zde..."
-        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9rem;padding:0.75rem;outline:none;text-align:center;"
-        onkeydown="if(event.key==='Enter')saveKey()">
-    </div>
-
-    <button class="btn btn-accent" onclick="saveKey()" style="width:100%;padding:0.875rem;font-size:0.9rem;">
-      Ulozit a spustit
-    </button>
-
-    <button onclick="hideApiSetup()" style="background:none;border:none;color:var(--muted);font-size:0.8rem;margin-top:1rem;cursor:pointer;">
-      Preskocit (bez live cen)
-    </button>
-  </div>
-</div>
-
 <!-- Add / Edit Modal -->
 <div class="overlay" id="overlay" onclick="overlayClick(event)">
   <div class="modal">
@@ -273,9 +236,10 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
     <div class="field" id="symbolField">
       <label>Symbol / Ticker</label>
       <div class="ac-wrap">
-        <input id="fSymbol" placeholder="AAPL, MSFT, TSLA..." autocomplete="off" autocapitalize="characters" oninput="onSymbolInput()" onblur="setTimeout(closeAc,150)">
+        <input id="fSymbol" placeholder="AAPL, MSFT, TSLA, SPY..." autocomplete="off" autocapitalize="characters" oninput="onSymbolInput()" onblur="setTimeout(closeAc,150)">
         <div class="ac-list" id="acList"></div>
       </div>
+      <div class="field-hint">Zadej US ticker symbol (napr. AAPL pro Apple)</div>
     </div>
 
     <div class="field" id="nameField">
@@ -317,29 +281,33 @@ function load() {
 }
 function save(d) { localStorage.setItem('fv_watchlist', JSON.stringify(d)); }
 
-function getApiKey() { return localStorage.getItem('finnhub_key') || ''; }
-function saveApiKey(k) { localStorage.setItem('finnhub_key', k.trim()); }
-
-// ── Price fetching (Finnhub) ──────────────────────────────────────────────────
+// ── Price fetching (Stooq via CORS proxy — bez registrace) ───────────────────
 let prices = {};
 let filter = 'all';
 
+function stooqSymbol(sym) {
+  // Append .US for plain tickers, leave as-is if already has exchange suffix
+  return sym.includes('.') ? sym : sym + '.US';
+}
+
 async function fetchPrice(symbol) {
-  const key = getApiKey();
-  if (!key) return null;
+  const s = stooqSymbol(symbol);
+  const url = `https://stooq.com/q/l/?s=${encodeURIComponent(s)}&f=sd2t2ohlcvn&h&e=json`;
+  const proxy = `https://corsproxy.io/?url=${encodeURIComponent(url)}`;
   try {
-    const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`,
-      { signal: AbortSignal.timeout(7000) });
+    const r = await fetch(proxy, { signal: AbortSignal.timeout(8000) });
     if (!r.ok) return null;
     const d = await r.json();
-    if (!d.c || d.c === 0) return null;
-    const change1d = d.pc ? ((d.c - d.pc) / d.pc) * 100 : null;
-    return { price: d.c, change1d };
+    const item = d?.symbols?.[0];
+    if (!item || !item.close || item.close === 'N/D') return null;
+    const close = parseFloat(item.close);
+    const open  = parseFloat(item.open);
+    const change1d = open ? ((close - open) / open) * 100 : null;
+    return { price: close, change1d };
   } catch { return null; }
 }
 
 async function doRefresh() {
-  if (!getApiKey()) { showApiSetup(); return; }
   const list = load();
   if (!list.length) return;
   const btn = document.getElementById('refreshBtn');
@@ -356,21 +324,6 @@ async function doRefresh() {
   btn.innerHTML = '↻';
   btn.disabled = false;
   render();
-}
-
-// ── API Key setup screen ──────────────────────────────────────────────────────
-function showApiSetup() {
-  document.getElementById('setupScreen').style.display = 'flex';
-}
-function hideApiSetup() {
-  document.getElementById('setupScreen').style.display = 'none';
-}
-function saveKey() {
-  const k = document.getElementById('apiKeyInput').value.trim();
-  if (!k) return;
-  saveApiKey(k);
-  hideApiSetup();
-  doRefresh();
 }
 
 // ── Signal logic ──────────────────────────────────────────────────────────────
@@ -591,22 +544,18 @@ function onSymbolInput() {
 }
 
 async function searchAc(q) {
-  const key = getApiKey();
-  if (!key) { closeAc(); return; }
-  try {
-    const r = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${key}`);
-    const d = await r.json();
-    const items = (d.result || []).filter(x => x.type === 'Common Stock' || x.type === 'ETP').slice(0, 5);
-    if (!items.length) { closeAc(); return; }
-    const list = document.getElementById('acList');
-    list.innerHTML = items.map(x =>
-      `<div class="ac-item" onclick="pickAc('${x.symbol}','${(x.description||'').replace(/'/g,"\\'")}')">
-        <span class="ac-sym">${x.symbol}</span>
-        <span class="ac-name">${x.description || ''}</span>
-      </div>`
-    ).join('');
-    list.classList.add('open');
-  } catch { closeAc(); }
+  // Quick local suggestions for common tickers
+  const common = ['AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','BRK.B','JPM','V',
+    'SPY','QQQ','VTI','VOO','IWM','GLD','TLT','XLF','XLK','ARKK'];
+  const matches = common.filter(s => s.startsWith(q.toUpperCase())).slice(0, 5);
+  if (!matches.length) { closeAc(); return; }
+  const list = document.getElementById('acList');
+  list.innerHTML = matches.map(s =>
+    `<div class="ac-item" onclick="pickAc('${s}','')">
+      <span class="ac-sym">${s}</span>
+    </div>`
+  ).join('');
+  list.classList.add('open');
 }
 
 function pickAc(sym, name) {
@@ -621,8 +570,7 @@ function closeAc() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 render();
-if (!getApiKey()) showApiSetup();
-else doRefresh();
+doRefresh();
 </script>
 </body>
 </html>

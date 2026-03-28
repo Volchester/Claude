@@ -284,18 +284,30 @@ function save(d) { localStorage.setItem('fv_watchlist', JSON.stringify(d)); }
 let prices = {}; // symbol -> { price, change1d }
 let filter = 'all';
 
+function parseYahooChart(d) {
+  const meta = d?.chart?.result?.[0]?.meta;
+  if (!meta?.regularMarketPrice) return null;
+  const prev = meta.chartPreviousClose || meta.previousClose;
+  const curr = meta.regularMarketPrice;
+  const change1d = prev ? ((curr - prev) / prev) * 100 : null;
+  return { price: curr, change1d };
+}
+
 async function fetchPrice(symbol) {
-  try {
-    const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=2d`);
-    const d = await r.json();
-    const res = d?.chart?.result?.[0];
-    const meta = res?.meta;
-    if (!meta?.regularMarketPrice) return null;
-    const prev = meta.chartPreviousClose || meta.previousClose;
-    const curr = meta.regularMarketPrice;
-    const change1d = prev ? ((curr - prev) / prev) * 100 : null;
-    return { price: curr, change1d };
-  } catch { return null; }
+  const path = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=2d`;
+  const path2 = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=2d`;
+  const proxy = `https://corsproxy.io/?url=${encodeURIComponent(path)}`;
+
+  // Try direct endpoints first, then CORS proxy as fallback
+  for (const url of [path, path2, proxy]) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (!r.ok) continue;
+      const result = parseYahooChart(await r.json());
+      if (result) return result;
+    } catch { /* try next */ }
+  }
+  return null;
 }
 
 async function doRefresh() {

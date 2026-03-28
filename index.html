@@ -196,16 +196,16 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
   <div class="header-right">
     <span class="update-time" id="updateTime">—</span>
     <button class="btn btn-ghost" id="refreshBtn" onclick="doRefresh()">↻</button>
-    <button class="btn btn-accent" onclick="openAddModal()">+ Pridat</button>
+    <button class="btn btn-accent" onclick="openAddModal()">+ Přidat</button>
   </div>
 </header>
 
 <main>
   <div class="summary" id="summary"></div>
   <div class="tabs">
-    <button class="tab active" onclick="setFilter('all', this)">Vse</button>
-    <button class="tab" onclick="setFilter('undervalued', this)">Podhodnocene</button>
-    <button class="tab" onclick="setFilter('overvalued', this)">Nadhodnocene</button>
+    <button class="tab active" onclick="setFilter('all', this)">Vše</button>
+    <button class="tab" onclick="setFilter('undervalued', this)">Podhodnocené</button>
+    <button class="tab" onclick="setFilter('overvalued', this)">Nadhodnocené</button>
   </div>
   <div id="list"></div>
 </main>
@@ -213,7 +213,7 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
 <div class="overlay" id="overlay" onclick="overlayClick(event)">
   <div class="modal">
     <div class="modal-handle"></div>
-    <h2 id="modalTitle">Pridat akcii</h2>
+    <h2 id="modalTitle">Přidat akcii</h2>
 
     <div class="field" id="symbolField">
       <label>Symbol / Ticker</label>
@@ -221,36 +221,36 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
         <input id="fSymbol" placeholder="AAPL, MSFT, TSLA, SPY..." autocomplete="off" autocapitalize="characters" oninput="onSymbolInput()" onblur="setTimeout(closeAc,150)">
         <div class="ac-list" id="acList"></div>
       </div>
-      <div class="field-hint">Zadej US ticker symbol (napr. AAPL pro Apple)</div>
+      <div class="field-hint">Zadej US ticker symbol (např. AAPL pro Apple)</div>
     </div>
 
     <div class="field" id="nameField">
-      <label>Nazev (volitelne)</label>
+      <label>Název (volitelně)</label>
       <input id="fName" placeholder="Apple Inc.">
     </div>
 
     <div class="row2">
       <div class="field">
-        <label>Ferni hodnota (USD)</label>
+        <label>Férná hodnota (USD)</label>
         <input id="fFair" type="number" min="0" step="any" placeholder="180.00" inputmode="decimal">
-        <div class="field-hint">Tvoje odhadovana spravedliva cena</div>
+        <div class="field-hint">Tvoje odhadovaná spravedlivá cena</div>
       </div>
       <div class="field">
         <label>Tolerance (%)</label>
         <input id="fTol" type="number" min="0" max="50" step="1" placeholder="5" inputmode="decimal" value="5">
-        <div class="field-hint">Pasmo "fair" okolo FV</div>
+        <div class="field-hint">Pásmo „fair" okolo FV</div>
       </div>
     </div>
 
     <div class="field">
-      <label>Poznamka</label>
-      <input id="fNote" placeholder="Proc je tato cena spravna?">
+      <label>Poznámka</label>
+      <input id="fNote" placeholder="Proč je tato cena správná?">
     </div>
 
     <div class="error-msg" id="modalError"></div>
     <div class="modal-btns">
-      <button class="btn btn-ghost" onclick="closeModal()">Zrusit</button>
-      <button class="btn btn-accent" id="modalSubmit" onclick="submitModal()">Pridat</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Zrušit</button>
+      <button class="btn btn-accent" id="modalSubmit" onclick="submitModal()">Přidat</button>
     </div>
   </div>
 </div>
@@ -365,7 +365,7 @@ function render() {
   const fair  = list.filter(s => { const p = prices[s.symbol]; return p && getSignal(p.price, s.fair, s.tol || 5).type === 'fair'; }).length;
 
   document.getElementById('summary').innerHTML = [
-    ['Sledovano', total],
+    ['Sledováno', total],
     [`<span style="color:var(--green)">▼ Podh.</span>`, under],
     [`<span style="color:var(--yellow)">≈ Fair</span>`, fair],
     [`<span style="color:var(--red)">▲ Nadh.</span>`, over],
@@ -380,15 +380,15 @@ function render() {
   if (!list.length) {
     document.getElementById('list').innerHTML = `
       <div class="empty">
-        <strong>Watchlist je prazdny</strong>
-        Pridej prvni akcii tlacitkem "+ Pridat".<br>
-        Nastav si fernou hodnotu a sleduj,<br>kdy je cas nakoupit nebo prodat.
+        <strong>Watchlist je prázdný</strong>
+        Přidej první akcii tlačítkem „+ Přidat".<br>
+        Nastav si férnou hodnotu a sleduj,<br>kdy je čas nakoupit nebo prodat.
       </div>`;
     return;
   }
 
   if (!visible.length) {
-    document.getElementById('list').innerHTML = `<div class="empty">Zadne akcie v teto kategorii.</div>`;
+    document.getElementById('list').innerHTML = `<div class="empty">Žádné akcie v této kategorii.</div>`;
     return;
   }
 
@@ -428,7 +428,7 @@ function render() {
           <div class="stock-name">${s.name || s.symbol}</div>
         </div>
         <div class="price-block">
-          <div class="current-price">${curr !== null ? '$' + fmt(curr) : '<span style="color:var(--muted);font-size:.85rem">Nacitam...</span>'}</div>
+          <div class="current-price">${curr !== null ? '$' + fmt(curr) : '<span style="color:var(--muted);font-size:.85rem">Načítám…</span>'}</div>
           ${chg !== null ? `<div class="price-change" style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtPct(chg)} dnes</div>` : ''}
         </div>
       </div>
@@ -464,8 +464,8 @@ let editIndex = -1;
 
 function openAddModal() {
   editIndex = -1;
-  document.getElementById('modalTitle').textContent = 'Pridat akcii';
-  document.getElementById('modalSubmit').textContent = 'Pridat';
+  document.getElementById('modalTitle').textContent = 'Přidat akcii';
+  document.getElementById('modalSubmit').textContent = 'Přidat';
   document.getElementById('symbolField').style.display = '';
   document.getElementById('nameField').style.display = '';
   ['fSymbol','fName','fNote'].forEach(id => document.getElementById(id).value = '');
@@ -479,7 +479,7 @@ function openEditModal(i) {
   const d = load()[i];
   editIndex = i;
   document.getElementById('modalTitle').textContent = `Upravit: ${d.symbol}`;
-  document.getElementById('modalSubmit').textContent = 'Ulozit';
+  document.getElementById('modalSubmit').textContent = 'Uložit';
   document.getElementById('symbolField').style.display = 'none';
   document.getElementById('nameField').style.display = 'none';
   document.getElementById('fFair').value = d.fair;
@@ -496,7 +496,7 @@ function submitModal() {
   const fair = parseFloat(document.getElementById('fFair').value);
   const tol  = parseFloat(document.getElementById('fTol').value);
   const note = document.getElementById('fNote').value.trim();
-  if (isNaN(fair) || fair <= 0) { document.getElementById('modalError').textContent = 'Zadej platnou fernou hodnotu.'; return; }
+  if (isNaN(fair) || fair <= 0) { document.getElementById('modalError').textContent = 'Zadej platnou férnou hodnotu.'; return; }
   const d = load();
   if (editIndex >= 0) {
     d[editIndex] = { ...d[editIndex], fair, tol: isNaN(tol) ? 5 : tol, note };
@@ -505,7 +505,7 @@ function submitModal() {
   const symbol = document.getElementById('fSymbol').value.trim().toUpperCase();
   const name   = document.getElementById('fName').value.trim();
   if (!symbol) { document.getElementById('modalError').textContent = 'Zadej ticker symbol.'; return; }
-  if (d.find(x => x.symbol === symbol)) { document.getElementById('modalError').textContent = 'Tato akcie uz je na watchlistu.'; return; }
+  if (d.find(x => x.symbol === symbol)) { document.getElementById('modalError').textContent = 'Tato akcie už je na watchlistu.'; return; }
   d.push({ id: Date.now().toString(), symbol, name: name || symbol, fair, tol: isNaN(tol) ? 5 : tol, note });
   save(d); closeModal();
   fetchPrice(symbol).then(p => {

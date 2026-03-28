@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Watchlist">
+<title>Fair Value Watchlist</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #131722;
+  --surface: #1e222d;
+  --surface2: #2a2e39;
+  --border: #363a45;
+  --text: #d1d4dc;
+  --muted: #787b86;
+  --accent: #2962ff;
+  --green: #26a69a;
+  --red: #ef5350;
+  --green-bg: #26a69a18;
+  --red-bg: #ef535018;
+  --yellow: #f9a825;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+
+/* Header */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0.875rem 1rem;
+  padding-top: calc(0.875rem + env(safe-area-inset-top));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky; top: 0; z-index: 20;
+}
+header h1 { font-size: 1rem; font-weight: 600; color: #fff; letter-spacing: 0.02em; }
+.header-right { display: flex; align-items: center; gap: 0.5rem; }
+.update-time { font-size: 0.7rem; color: var(--muted); }
+
+.btn {
+  border: none; border-radius: 6px; font-weight: 600; cursor: pointer;
+  padding: 0.5rem 0.875rem; font-size: 0.8rem; transition: opacity 0.15s;
+}
+.btn:active { opacity: 0.7; }
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-ghost { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+
+main { max-width: 680px; margin: 0 auto; padding: 1rem; }
+
+/* Summary bar */
+.summary {
+  display: flex; gap: 0.75rem; margin-bottom: 1rem; overflow-x: auto;
+  padding-bottom: 0.25rem; scrollbar-width: none;
+}
+.summary::-webkit-scrollbar { display: none; }
+.sum-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.625rem 0.875rem; flex-shrink: 0;
+}
+.sum-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+.sum-val { font-size: 0.95rem; font-weight: 700; }
+
+/* Filter tabs */
+.tabs { display: flex; gap: 0.25rem; margin-bottom: 0.875rem; }
+.tab {
+  padding: 0.375rem 0.75rem; border-radius: 6px; font-size: 0.78rem; font-weight: 500;
+  cursor: pointer; border: none; background: transparent; color: var(--muted);
+  transition: all 0.15s;
+}
+.tab.active { background: var(--surface2); color: var(--text); }
+
+/* Stock cards */
+.stock-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 0.875rem 1rem; margin-bottom: 0.5rem;
+  cursor: pointer; transition: border-color 0.15s;
+  position: relative; overflow: hidden;
+}
+.stock-card:active { border-color: var(--accent); }
+
+/* Left glow bar based on signal */
+.stock-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+}
+.stock-card.undervalued::before { background: var(--green); }
+.stock-card.overvalued::before { background: var(--red); }
+.stock-card.fair::before { background: var(--yellow); }
+
+.card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.625rem; }
+
+.stock-info { flex: 1; }
+.stock-symbol { font-size: 1rem; font-weight: 700; color: #fff; }
+.stock-name { font-size: 0.72rem; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+
+.price-block { text-align: right; }
+.current-price { font-size: 1.1rem; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.price-change { font-size: 0.75rem; margin-top: 1px; font-variant-numeric: tabular-nums; }
+
+/* Fair value section */
+.fv-row { display: flex; align-items: center; gap: 0.5rem; }
+.fv-label { font-size: 0.68rem; color: var(--muted); white-space: nowrap; }
+.fv-value { font-size: 0.78rem; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* Progress bar */
+.fv-bar-wrap { flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; position: relative; }
+.fv-bar { height: 100%; border-radius: 2px; transition: width 0.4s; }
+.fv-bar.under { background: var(--green); }
+.fv-bar.over { background: var(--red); }
+.fv-bar.fair { background: var(--yellow); }
+
+/* Signal badge */
+.signal {
+  font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.45rem;
+  border-radius: 4px; white-space: nowrap; margin-left: 0.25rem;
+}
+.signal.buy { background: var(--green-bg); color: var(--green); border: 1px solid #26a69a33; }
+.signal.sell { background: var(--red-bg); color: var(--red); border: 1px solid #ef535033; }
+.signal.hold { background: #f9a82518; color: var(--yellow); border: 1px solid #f9a82533; }
+
+.card-actions {
+  display: flex; gap: 0.5rem; margin-top: 0.75rem;
+  padding-top: 0.625rem; border-top: 1px solid var(--border);
+}
+.card-btn {
+  flex: 1; background: var(--surface2); border: none; color: var(--muted);
+  border-radius: 6px; padding: 0.4rem; font-size: 0.75rem; cursor: pointer;
+  font-weight: 500;
+}
+.card-btn:active { opacity: 0.7; }
+.card-btn.danger:active { color: var(--red); }
+
+/* Empty state */
+.empty {
+  text-align: center; padding: 3.5rem 1rem; color: var(--muted);
+  border: 1px dashed var(--border); border-radius: 12px; font-size: 0.875rem;
+  line-height: 1.6;
+}
+.empty strong { display: block; font-size: 1rem; color: var(--text); margin-bottom: 0.5rem; }
+
+/* Overlay / Modal */
+.overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.75); z-index: 100;
+  align-items: flex-end; justify-content: center;
+}
+.overlay.open { display: flex; }
+
+.modal {
+  background: var(--surface); border-radius: 16px 16px 0 0;
+  padding: 1.5rem 1.25rem;
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  width: 100%; max-width: 680px; border-top: 1px solid var(--border);
+}
+.modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: -0.5rem auto 1.25rem; }
+.modal h2 { font-size: 1rem; font-weight: 700; margin-bottom: 1.25rem; color: #fff; }
+
+.field { margin-bottom: 1rem; }
+.field label { display: block; font-size: 0.72rem; color: var(--muted); font-weight: 500; margin-bottom: 0.375rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.field input, .field select {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-size: 0.9rem;
+  padding: 0.7rem 0.875rem; outline: none; -webkit-appearance: none;
+}
+.field input:focus, .field select:focus { border-color: var(--accent); }
+.field input::placeholder { color: var(--muted); }
+.field-hint { font-size: 0.7rem; color: var(--muted); margin-top: 0.375rem; }
+
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+.modal-btns { display: flex; gap: 0.75rem; margin-top: 1rem; }
+.modal-btns .btn { flex: 1; padding: 0.75rem; font-size: 0.875rem; }
+
+.error-msg { color: var(--red); font-size: 0.78rem; margin-bottom: 0.75rem; }
+
+/* Autocomplete */
+.ac-wrap { position: relative; }
+.ac-list {
+  display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 30;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; margin-top: 3px; overflow: hidden;
+}
+.ac-list.open { display: block; }
+.ac-item {
+  padding: 0.625rem 0.875rem; cursor: pointer; font-size: 0.85rem;
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+.ac-item:last-child { border-bottom: none; }
+.ac-item:active { background: var(--border); }
+.ac-sym { font-weight: 700; color: #fff; }
+.ac-name { color: var(--muted); font-size: 0.75rem; text-align: right; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Loading spinner */
+.spin { display: inline-block; animation: rotate 0.8s linear infinite; }
+@keyframes rotate { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Fair Value Watchlist</h1>
+  <div class="header-right">
+    <span class="update-time" id="updateTime">—</span>
+    <button class="btn btn-ghost" id="refreshBtn" onclick="doRefresh()">↻</button>
+    <button class="btn btn-accent" onclick="openAddModal()">+ Pridat</button>
+  </div>
+</header>
+
+<main>
+  <div class="summary" id="summary"></div>
+  <div class="tabs" id="tabs">
+    <button class="tab active" onclick="setFilter('all', this)">Vse</button>
+    <button class="tab" onclick="setFilter('undervalued', this)">Podhodnocene</button>
+    <button class="tab" onclick="setFilter('overvalued', this)">Nadhodnocene</button>
+  </div>
+  <div id="list"></div>
+</main>
+
+<!-- Add / Edit Modal -->
+<div class="overlay" id="overlay" onclick="overlayClick(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h2 id="modalTitle">Pridat akcii</h2>
+
+    <div class="field" id="symbolField">
+      <label>Symbol / Ticker</label>
+      <div class="ac-wrap">
+        <input id="fSymbol" placeholder="AAPL, MSFT, TSLA..." autocomplete="off" autocapitalize="characters" oninput="onSymbolInput()" onblur="setTimeout(closeAc,150)">
+        <div class="ac-list" id="acList"></div>
+      </div>
+    </div>
+
+    <div class="field" id="nameField">
+      <label>Nazev (volitelne)</label>
+      <input id="fName" placeholder="Apple Inc.">
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label>Ferni hodnota (USD)</label>
+        <input id="fFair" type="number" min="0" step="any" placeholder="180.00" inputmode="decimal">
+        <div class="field-hint">Tvoje odhadovana spravedliva cena</div>
+      </div>
+      <div class="field">
+        <label>Tolerance (%)</label>
+        <input id="fTol" type="number" min="0" max="50" step="1" placeholder="5" inputmode="decimal" value="5">
+        <div class="field-hint">Pasmo "fair" okolo FV</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Poznamka</label>
+      <input id="fNote" placeholder="Proc je tato cena spravna?">
+    </div>
+
+    <div class="error-msg" id="modalError"></div>
+
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Zrusit</button>
+      <button class="btn btn-accent" id="modalSubmit" onclick="submitModal()">Pridat</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Data ──────────────────────────────────────────────────────────────────────
+function load() {
+  try { return JSON.parse(localStorage.getItem('fv_watchlist') || '[]'); } catch { return []; }
+}
+function save(d) { localStorage.setItem('fv_watchlist', JSON.stringify(d)); }
+
+// ── Price fetching ────────────────────────────────────────────────────────────
+let prices = {}; // symbol -> { price, change1d }
+let filter = 'all';
+
+async function fetchPrice(symbol) {
+  try {
+    const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=2d`);
+    const d = await r.json();
+    const res = d?.chart?.result?.[0];
+    const meta = res?.meta;
+    if (!meta?.regularMarketPrice) return null;
+    const prev = meta.chartPreviousClose || meta.previousClose;
+    const curr = meta.regularMarketPrice;
+    const change1d = prev ? ((curr - prev) / prev) * 100 : null;
+    return { price: curr, change1d };
+  } catch { return null; }
+}
+
+async function doRefresh() {
+  const list = load();
+  if (!list.length) return;
+  const btn = document.getElementById('refreshBtn');
+  btn.innerHTML = '<span class="spin">↻</span>';
+  btn.disabled = true;
+  document.getElementById('updateTime').textContent = 'Obnovuji...';
+
+  const results = await Promise.all(list.map(s => fetchPrice(s.symbol)));
+  list.forEach((s, i) => { if (results[i]) prices[s.symbol] = results[i]; });
+
+  const now = new Date();
+  document.getElementById('updateTime').textContent =
+    `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+  btn.innerHTML = '↻';
+  btn.disabled = false;
+  render();
+}
+
+// ── Signal logic ──────────────────────────────────────────────────────────────
+function getSignal(current, fair, tol) {
+  if (!current || !fair) return { type: 'unknown', pct: null, diff: null };
+  const pct = ((current - fair) / fair) * 100;
+  const diff = current - fair;
+  let type;
+  if (pct < -tol) type = 'undervalued';
+  else if (pct > tol) type = 'overvalued';
+  else type = 'fair';
+  return { type, pct, diff };
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function fmt(n, d = 2) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function fmtPct(n) {
+  if (n == null) return '—';
+  return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+}
+
+function setFilter(f, el) {
+  filter = f;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  render();
+}
+
+function render() {
+  const list = load();
+
+  // Summary
+  const total = list.length;
+  const under = list.filter(s => { const p = prices[s.symbol]; return p && getSignal(p.price, s.fair, s.tol || 5).type === 'undervalued'; }).length;
+  const over  = list.filter(s => { const p = prices[s.symbol]; return p && getSignal(p.price, s.fair, s.tol || 5).type === 'overvalued'; }).length;
+  const fair  = list.filter(s => { const p = prices[s.symbol]; return p && getSignal(p.price, s.fair, s.tol || 5).type === 'fair'; }).length;
+
+  document.getElementById('summary').innerHTML = [
+    ['Sledovano', total],
+    [`<span style="color:var(--green)">▼ Podh.</span>`, under],
+    [`<span style="color:var(--yellow)">≈ Fair</span>`, fair],
+    [`<span style="color:var(--red)">▲ Nadh.</span>`, over],
+  ].map(([l, v]) => `<div class="sum-card"><div class="sum-label">${l}</div><div class="sum-val">${v}</div></div>`).join('');
+
+  // Filter
+  const visible = filter === 'all' ? list : list.filter(s => {
+    const p = prices[s.symbol];
+    if (!p) return filter === 'all';
+    return getSignal(p.price, s.fair, s.tol || 5).type === filter;
+  });
+
+  if (!list.length) {
+    document.getElementById('list').innerHTML = `
+      <div class="empty">
+        <strong>Watchlist je prazdny</strong>
+        Pridej prvni akcii tlacitkem "+ Pridat".<br>
+        Nastav si fernou hodnotu a sleduj,<br>kdy je cas nakoupit nebo prodat.
+      </div>`;
+    return;
+  }
+
+  if (!visible.length) {
+    document.getElementById('list').innerHTML = `<div class="empty">Zadne akcie v teto kategorii.</div>`;
+    return;
+  }
+
+  document.getElementById('list').innerHTML = visible.map((s, vi) => {
+    const realIndex = list.findIndex(x => x.id === s.id);
+    const p = prices[s.symbol];
+    const curr = p?.price ?? null;
+    const chg = p?.change1d ?? null;
+    const sig = getSignal(curr, s.fair, s.tol || 5);
+
+    // Bar: shows how far current price is from fair value, capped at 2x tolerance
+    let barPct = 50, barClass = 'fair';
+    if (sig.pct !== null) {
+      const cap = Math.max(s.tol * 4 || 20, 20);
+      barPct = Math.min(100, Math.max(0, 50 + (sig.pct / cap) * 50));
+      barClass = sig.type === 'undervalued' ? 'under' : sig.type === 'overvalued' ? 'over' : 'fair';
+    }
+
+    const signalLabel = { undervalued: 'NAKUP', overvalued: 'PRODEJ', fair: 'FAIR', unknown: '—' }[sig.type];
+    const signalCls   = { undervalued: 'buy',   overvalued: 'sell',   fair: 'hold', unknown: 'hold' }[sig.type];
+    const cardCls     = { undervalued: 'undervalued', overvalued: 'overvalued', fair: 'fair', unknown: '' }[sig.type];
+
+    return `
+    <div class="stock-card ${cardCls}" onclick="toggleExpand('card-${s.id}')">
+      <div class="card-top">
+        <div class="stock-info">
+          <div class="stock-symbol">${s.symbol}</div>
+          <div class="stock-name">${s.name || s.symbol}</div>
+        </div>
+        <div class="price-block">
+          <div class="current-price">${curr !== null ? '$' + fmt(curr) : '<span style="color:var(--muted);font-size:.85rem">Neni signal</span>'}</div>
+          ${chg !== null ? `<div class="price-change" style="color:${chg >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtPct(chg)} dnes</div>` : ''}
+        </div>
+      </div>
+
+      <div class="fv-row">
+        <div class="fv-label">FV $${fmt(s.fair)}</div>
+        <div class="fv-bar-wrap">
+          <div class="fv-bar ${barClass}" style="width:${barPct}%"></div>
+        </div>
+        <div class="fv-value" style="color:${sig.type==='undervalued'?'var(--green)':sig.type==='overvalued'?'var(--red)':'var(--yellow)'}">
+          ${sig.pct !== null ? fmtPct(sig.pct) : '—'}
+        </div>
+        <span class="signal ${signalCls}">${signalLabel}</span>
+      </div>
+
+      ${sig.diff !== null ? `
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:0.375rem">
+          ${sig.diff >= 0 ? 'O $' + fmt(Math.abs(sig.diff)) + ' nad fernou hodnotou' : 'O $' + fmt(Math.abs(sig.diff)) + ' pod fernou hodnotou'}
+          ${s.note ? ` · <em>${s.note}</em>` : ''}
+        </div>
+      ` : s.note ? `<div style="font-size:0.72rem;color:var(--muted);margin-top:0.375rem"><em>${s.note}</em></div>` : ''}
+
+      <div class="card-actions" id="card-${s.id}" style="display:none">
+        <button class="card-btn" onclick="event.stopPropagation(); openEditModal(${realIndex})">Upravit FV</button>
+        <button class="card-btn danger" onclick="event.stopPropagation(); deleteItem(${realIndex})">Odebrat</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleExpand(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+
+function deleteItem(i) {
+  if (!confirm('Odebrat tuto akcii?')) return;
+  const d = load(); d.splice(i, 1); save(d);
+  render();
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+let editIndex = -1;
+
+function openAddModal() {
+  editIndex = -1;
+  document.getElementById('modalTitle').textContent = 'Pridat akcii';
+  document.getElementById('modalSubmit').textContent = 'Pridat';
+  document.getElementById('symbolField').style.display = '';
+  document.getElementById('nameField').style.display = '';
+  document.getElementById('fSymbol').value = '';
+  document.getElementById('fName').value = '';
+  document.getElementById('fFair').value = '';
+  document.getElementById('fTol').value = '5';
+  document.getElementById('fNote').value = '';
+  document.getElementById('modalError').textContent = '';
+  document.getElementById('overlay').classList.add('open');
+}
+
+function openEditModal(i) {
+  const d = load()[i];
+  editIndex = i;
+  document.getElementById('modalTitle').textContent = `Upravit: ${d.symbol}`;
+  document.getElementById('modalSubmit').textContent = 'Ulozit';
+  document.getElementById('symbolField').style.display = 'none';
+  document.getElementById('nameField').style.display = 'none';
+  document.getElementById('fFair').value = d.fair;
+  document.getElementById('fTol').value = d.tol || 5;
+  document.getElementById('fNote').value = d.note || '';
+  document.getElementById('modalError').textContent = '';
+  document.getElementById('overlay').classList.add('open');
+}
+
+function closeModal() { document.getElementById('overlay').classList.remove('open'); closeAc(); }
+function overlayClick(e) { if (e.target === document.getElementById('overlay')) closeModal(); }
+
+function submitModal() {
+  const fair = parseFloat(document.getElementById('fFair').value);
+  const tol  = parseFloat(document.getElementById('fTol').value);
+  const note = document.getElementById('fNote').value.trim();
+
+  if (isNaN(fair) || fair <= 0) {
+    document.getElementById('modalError').textContent = 'Zadej platnou fernou hodnotu.'; return;
+  }
+
+  const d = load();
+
+  if (editIndex >= 0) {
+    d[editIndex] = { ...d[editIndex], fair, tol: isNaN(tol) ? 5 : tol, note };
+    save(d); closeModal(); render();
+    return;
+  }
+
+  const symbol = document.getElementById('fSymbol').value.trim().toUpperCase();
+  const name   = document.getElementById('fName').value.trim();
+  if (!symbol) { document.getElementById('modalError').textContent = 'Zadej ticker symbol.'; return; }
+  if (d.find(x => x.symbol === symbol)) {
+    document.getElementById('modalError').textContent = 'Tato akcie uz je na watchlistu.'; return;
+  }
+
+  d.push({ id: Date.now().toString(), symbol, name: name || symbol, fair, tol: isNaN(tol) ? 5 : tol, note });
+  save(d); closeModal();
+  fetchPrice(symbol).then(p => {
+    if (p) prices[symbol] = p;
+    render();
+    const now = new Date();
+    document.getElementById('updateTime').textContent =
+      `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+  });
+  render();
+}
+
+// ── Autocomplete ──────────────────────────────────────────────────────────────
+let acTimer;
+function onSymbolInput() {
+  const q = document.getElementById('fSymbol').value.trim();
+  clearTimeout(acTimer);
+  if (!q) { closeAc(); return; }
+  acTimer = setTimeout(() => searchAc(q), 380);
+}
+
+async function searchAc(q) {
+  try {
+    const r = await fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=6&newsCount=0`);
+    const d = await r.json();
+    const items = (d.quotes || []).filter(x => x.symbol && x.quoteType !== 'CRYPTOCURRENCY').slice(0, 5);
+    if (!items.length) { closeAc(); return; }
+    const list = document.getElementById('acList');
+    list.innerHTML = items.map(x =>
+      `<div class="ac-item" onclick="pickAc('${x.symbol}','${(x.shortname||x.longname||'').replace(/'/g,"\\'")}')">
+        <span class="ac-sym">${x.symbol}</span>
+        <span class="ac-name">${x.shortname || x.longname || ''}</span>
+      </div>`
+    ).join('');
+    list.classList.add('open');
+  } catch { closeAc(); }
+}
+
+function pickAc(sym, name) {
+  document.getElementById('fSymbol').value = sym;
+  document.getElementById('fName').value = name;
+  closeAc();
+}
+function closeAc() {
+  document.getElementById('acList').classList.remove('open');
+  document.getElementById('acList').innerHTML = '';
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+render();
+doRefresh();
+</script>
+</body>
+</html>

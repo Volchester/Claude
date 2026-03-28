@@ -154,4 +154,4 @@ app.get('/api/search', async (req, res) => {
 });
 
 const PORT = 3001;
-app.listen(PORT, () => console.log(`Portfolio backend running on http://localhost:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Portfolio backend running on http://0.0.0.0:${PORT}`));

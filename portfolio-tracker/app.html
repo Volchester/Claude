@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Portfolio">
+<title>Portfolio Tracker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d2e;
+    --border: #2d3148;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #6366f1;
+    --green: #4ade80;
+    --red: #f87171;
+    --amber: #f59e0b;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 1.25rem;
+    padding-top: calc(1rem + env(safe-area-inset-top));
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  header h1 { font-size: 1.125rem; font-weight: 700; }
+  header p { font-size: 0.75rem; color: var(--muted); margin-top: 1px; }
+
+  .header-btns { display: flex; gap: 0.5rem; }
+
+  .btn {
+    border: none; border-radius: 8px; font-weight: 600;
+    cursor: pointer; padding: 0.5rem 0.875rem; font-size: 0.8rem;
+    transition: opacity 0.15s;
+  }
+  .btn:active { opacity: 0.7; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-ghost { background: var(--border); color: var(--muted); }
+
+  main { padding: 1rem 1.25rem; max-width: 700px; margin: 0 auto; }
+
+  /* Summary cards */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+  }
+  .card-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.375rem; }
+  .card-value { font-size: 1.3rem; font-weight: 700; }
+  .card-sub { font-size: 0.8rem; margin-top: 2px; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+
+  /* Holdings */
+  .section-title {
+    font-size: 0.75rem; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: 0.625rem; font-weight: 600;
+  }
+
+  .holding {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 0.625rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .holding-left { flex: 1; min-width: 0; }
+  .holding-symbol { font-weight: 700; font-size: 1rem; }
+  .holding-name { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+
+  .badge {
+    font-size: 0.65rem; font-weight: 700; border-radius: 4px;
+    padding: 0.1rem 0.4rem; display: inline-block; margin-top: 4px;
+  }
+  .badge-stock { background: #3b82f622; color: #3b82f6; border: 1px solid #3b82f644; }
+  .badge-etf   { background: #8b5cf622; color: #8b5cf6; border: 1px solid #8b5cf644; }
+  .badge-crypto { background: #f59e0b22; color: var(--amber); border: 1px solid #f59e0b44; }
+
+  .holding-mid { text-align: right; flex-shrink: 0; }
+  .holding-value { font-weight: 700; font-size: 1rem; }
+  .holding-gain { font-size: 0.78rem; margin-top: 2px; }
+  .holding-price { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+
+  .delete-btn {
+    background: none; border: none; color: var(--border);
+    font-size: 1.25rem; cursor: pointer; padding: 0.25rem 0.25rem 0.25rem 0.5rem;
+    line-height: 1; flex-shrink: 0;
+  }
+  .delete-btn:active { color: var(--red); }
+
+  .empty {
+    text-align: center; padding: 3rem 1rem;
+    color: var(--muted); border: 1px dashed var(--border);
+    border-radius: 12px; font-size: 0.875rem;
+  }
+
+  /* Modal */
+  .overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 100;
+    align-items: flex-end; justify-content: center;
+  }
+  .overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    padding: 1.5rem 1.25rem;
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+    width: 100%; max-width: 700px;
+    border-top: 1px solid var(--border);
+  }
+  .modal h2 { font-size: 1.125rem; font-weight: 700; margin-bottom: 1.25rem; }
+
+  .field { margin-bottom: 1rem; }
+  .field label { display: block; font-size: 0.75rem; color: var(--muted); font-weight: 500; margin-bottom: 0.375rem; }
+  .field input, .field select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 0.9rem;
+    padding: 0.625rem 0.75rem; outline: none;
+    -webkit-appearance: none;
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .field input::placeholder { color: var(--muted); }
+
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+  .modal-btns { display: flex; gap: 0.75rem; margin-top: 0.5rem; }
+  .modal-btns .btn { flex: 1; padding: 0.75rem; font-size: 0.9rem; }
+
+  .error { color: var(--red); font-size: 0.8rem; margin-bottom: 0.75rem; }
+
+  /* Autocomplete */
+  .ac-wrap { position: relative; }
+  .ac-list {
+    display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 20;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; margin-top: 2px; overflow: hidden;
+  }
+  .ac-list.open { display: block; }
+  .ac-item {
+    padding: 0.625rem 0.75rem; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.85rem;
+  }
+  .ac-item:active { background: var(--border); }
+  .ac-item span { color: var(--muted); font-size: 0.75rem; max-width: 60%; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .refresh-time { font-size: 0.7rem; color: var(--muted); text-align: right; margin-bottom: 0.75rem; }
+  .spinning { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Portfolio</h1>
+    <p id="lastUpdate">Nacitam ceny...</p>
+  </div>
+  <div class="header-btns">
+    <button class="btn btn-ghost" onclick="refreshPrices()">↻</button>
+    <button class="btn btn-primary" onclick="openModal()">+ Pridat</button>
+  </div>
+</header>
+
+<main>
+  <div class="cards" id="cards"></div>
+  <div class="section-title">Moje aktiva</div>
+  <div id="holdings"></div>
+</main>
+
+<!-- Modal -->
+<div class="overlay" id="overlay" onclick="closeModal(event)">
+  <div class="modal">
+    <h2>Pridat aktivum</h2>
+
+    <div class="field">
+      <label>Typ</label>
+      <select id="fType" onchange="onTypeChange()">
+        <option value="stock">Akcie</option>
+        <option value="etf">ETF</option>
+        <option value="crypto">Kryptomena</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label id="symbolLabel">Ticker (napr. AAPL)</label>
+      <div class="ac-wrap">
+        <input id="fSymbol" placeholder="AAPL, MSFT, SPY..." autocomplete="off" autocapitalize="characters"
+          oninput="onSymbolInput()" onblur="setTimeout(closeAc, 200)">
+        <div class="ac-list" id="acList"></div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Nazev (volitelne)</label>
+      <input id="fName" placeholder="Apple Inc.">
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label>Mnozstvi</label>
+        <input id="fQty" type="number" min="0" step="any" placeholder="10" inputmode="decimal">
+      </div>
+      <div class="field">
+        <label>Nak. cena (USD)</label>
+        <input id="fPrice" type="number" min="0" step="any" placeholder="150.00" inputmode="decimal">
+      </div>
+    </div>
+
+    <div class="error" id="fError"></div>
+
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Zrusit</button>
+      <button class="btn btn-primary" onclick="addHolding()">Pridat</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Storage ──────────────────────────────────────────────────────────────────
+function load() {
+  try { return JSON.parse(localStorage.getItem('portfolio') || '[]'); } catch { return []; }
+}
+function save(data) { localStorage.setItem('portfolio', JSON.stringify(data)); }
+
+// ── Price cache ───────────────────────────────────────────────────────────────
+let priceCache = {};
+
+async function fetchCryptoPrices(ids) {
+  if (!ids.length) return {};
+  try {
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd`;
+    const r = await fetch(url);
+    const d = await r.json();
+    const out = {};
+    for (const [id, v] of Object.entries(d)) out[id.toLowerCase()] = v.usd;
+    return out;
+  } catch { return {}; }
+}
+
+async function fetchStockPrice(symbol) {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+    const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    const d = await r.json();
+    const price = d?.chart?.result?.[0]?.meta?.regularMarketPrice;
+    return price ?? null;
+  } catch { return null; }
+}
+
+async function refreshPrices() {
+  const holdings = load();
+  if (!holdings.length) return;
+
+  document.getElementById('lastUpdate').textContent = 'Obnovuji...';
+
+  const cryptoIds = holdings.filter(h => h.type === 'crypto').map(h => h.symbol.toLowerCase());
+  const stockSymbols = holdings.filter(h => h.type !== 'crypto').map(h => h.symbol);
+
+  const [cryptoPrices, ...stockPrices] = await Promise.all([
+    fetchCryptoPrices(cryptoIds),
+    ...stockSymbols.map(s => fetchStockPrice(s)),
+  ]);
+
+  cryptoIds.forEach(id => { if (cryptoPrices[id]) priceCache[id] = cryptoPrices[id]; });
+  stockSymbols.forEach((sym, i) => { if (stockPrices[i]) priceCache[sym.toUpperCase()] = stockPrices[i]; });
+
+  const now = new Date();
+  document.getElementById('lastUpdate').textContent =
+    `Aktualizovano ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+  render();
+}
+
+function getPrice(h) {
+  const key = h.type === 'crypto' ? h.symbol.toLowerCase() : h.symbol.toUpperCase();
+  return priceCache[key] ?? null;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function fmt(n, decimals = 2) {
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function render() {
+  const holdings = load();
+
+  // Summary
+  let totalValue = 0, totalCost = 0;
+  holdings.forEach(h => {
+    const p = getPrice(h);
+    totalCost += h.qty * h.buyPrice;
+    totalValue += p !== null ? h.qty * p : h.qty * h.buyPrice;
+  });
+  const gain = totalValue - totalCost;
+  const gainPct = totalCost > 0 ? (gain / totalCost) * 100 : 0;
+  const gainCls = gain >= 0 ? 'pos' : 'neg';
+  const gainSign = gain >= 0 ? '+' : '';
+
+  document.getElementById('cards').innerHTML = `
+    <div class="card">
+      <div class="card-label">Celkova hodnota</div>
+      <div class="card-value">$${fmt(totalValue)}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Zisk / Ztrata</div>
+      <div class="card-value ${gainCls}">${gainSign}$${fmt(gain)}</div>
+      <div class="card-sub ${gainCls}">${gainSign}${gainPct.toFixed(2)}%</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Pocet aktiv</div>
+      <div class="card-value">${holdings.length}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Vlozeno</div>
+      <div class="card-value">$${fmt(totalCost)}</div>
+    </div>
+  `;
+
+  // Holdings list
+  if (!holdings.length) {
+    document.getElementById('holdings').innerHTML = `<div class="empty">Zadna aktiva. Pridej prvni kliknutim na "+ Pridat".</div>`;
+    return;
+  }
+
+  document.getElementById('holdings').innerHTML = holdings.map((h, i) => {
+    const p = getPrice(h);
+    const cost = h.qty * h.buyPrice;
+    const val = p !== null ? h.qty * p : cost;
+    const gl = p !== null ? val - cost : null;
+    const glPct = cost > 0 && gl !== null ? (gl / cost) * 100 : null;
+    const glCls = gl === null ? '' : gl >= 0 ? 'pos' : 'neg';
+    const glSign = gl !== null && gl >= 0 ? '+' : '';
+    const badge = { stock: 'badge-stock', etf: 'badge-etf', crypto: 'badge-crypto' }[h.type] || '';
+    const badgeLabel = { stock: 'Akcie', etf: 'ETF', crypto: 'Krypto' }[h.type] || h.type;
+
+    return `
+      <div class="holding">
+        <div class="holding-left">
+          <div class="holding-symbol">${h.symbol}</div>
+          <div class="holding-name">${h.name || h.symbol}</div>
+          <span class="badge ${badge}">${badgeLabel}</span>
+        </div>
+        <div class="holding-mid">
+          <div class="holding-value">$${fmt(val)}</div>
+          ${gl !== null
+            ? `<div class="holding-gain ${glCls}">${glSign}$${fmt(gl)} (${glSign}${glPct.toFixed(2)}%)</div>`
+            : `<div class="holding-gain" style="color:var(--muted)">cena neni</div>`}
+          <div class="holding-price">${h.qty} ks × $${fmt(h.buyPrice, 4)}</div>
+        </div>
+        <button class="delete-btn" onclick="deleteHolding(${i})" title="Odebrat">×</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function deleteHolding(i) {
+  if (!confirm('Odebrat toto aktivum?')) return;
+  const data = load();
+  data.splice(i, 1);
+  save(data);
+  render();
+  refreshPrices();
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openModal() { document.getElementById('overlay').classList.add('open'); }
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('overlay')) {
+    document.getElementById('overlay').classList.remove('open');
+    document.getElementById('fError').textContent = '';
+    document.getElementById('fSymbol').value = '';
+    document.getElementById('fName').value = '';
+    document.getElementById('fQty').value = '';
+    document.getElementById('fPrice').value = '';
+    closeAc();
+  }
+}
+
+function onTypeChange() {
+  const t = document.getElementById('fType').value;
+  document.getElementById('symbolLabel').textContent =
+    t === 'crypto' ? 'CoinGecko ID (napr. bitcoin)' : 'Ticker (napr. AAPL)';
+  document.getElementById('fSymbol').placeholder =
+    t === 'crypto' ? 'bitcoin, ethereum, solana...' : 'AAPL, MSFT, SPY...';
+  document.getElementById('fSymbol').autocapitalize = t === 'crypto' ? 'none' : 'characters';
+  closeAc();
+}
+
+function addHolding() {
+  const type = document.getElementById('fType').value;
+  const symbol = document.getElementById('fSymbol').value.trim();
+  const name = document.getElementById('fName').value.trim();
+  const qty = parseFloat(document.getElementById('fQty').value);
+  const buyPrice = parseFloat(document.getElementById('fPrice').value);
+
+  if (!symbol || isNaN(qty) || qty <= 0 || isNaN(buyPrice) || buyPrice <= 0) {
+    document.getElementById('fError').textContent = 'Vyplnte vsechna pole spravnymi hodnotami.';
+    return;
+  }
+
+  const data = load();
+  const sym = type === 'crypto' ? symbol.toLowerCase() : symbol.toUpperCase();
+  data.push({ type, symbol: sym, name: name || sym, qty, buyPrice });
+  save(data);
+  closeModal();
+  render();
+  refreshPrices();
+}
+
+// ── Autocomplete (stocks/ETF only via Yahoo search) ────────────────────────────
+let acTimeout;
+function onSymbolInput() {
+  const type = document.getElementById('fType').value;
+  if (type === 'crypto') { closeAc(); return; }
+  const q = document.getElementById('fSymbol').value.trim();
+  clearTimeout(acTimeout);
+  if (!q) { closeAc(); return; }
+  acTimeout = setTimeout(() => searchSymbols(q), 400);
+}
+
+async function searchSymbols(q) {
+  try {
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=6&newsCount=0`;
+    const r = await fetch(url);
+    const d = await r.json();
+    const quotes = (d.quotes || []).filter(x => x.symbol).slice(0, 5);
+    if (!quotes.length) { closeAc(); return; }
+    const list = document.getElementById('acList');
+    list.innerHTML = quotes.map(x => `
+      <div class="ac-item" onclick="pickSymbol('${x.symbol}','${(x.shortname||x.longname||'').replace(/'/g,"\\'")}','${x.quoteType==='ETF'?'etf':'stock'}')">
+        <strong>${x.symbol}</strong>
+        <span>${x.shortname || x.longname || ''}</span>
+      </div>
+    `).join('');
+    list.classList.add('open');
+  } catch { closeAc(); }
+}
+
+function pickSymbol(symbol, name, type) {
+  document.getElementById('fSymbol').value = symbol;
+  document.getElementById('fName').value = name;
+  document.getElementById('fType').value = type;
+  closeAc();
+}
+
+function closeAc() {
+  document.getElementById('acList').classList.remove('open');
+  document.getElementById('acList').innerHTML = '';
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+render();
+refreshPrices();
+</script>
+</body>
+</html>

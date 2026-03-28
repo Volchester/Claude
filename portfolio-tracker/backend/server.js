@@ -153,5 +153,14 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-const PORT = 3001;
-app.listen(PORT, '0.0.0.0', () => console.log(`Portfolio backend running on http://0.0.0.0:${PORT}`));
+// Serve React frontend in production
+const FRONTEND_DIST = path.join(__dirname, '../frontend/dist');
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(FRONTEND_DIST));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
+  });
+}
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, '0.0.0.0', () => console.log(`Portfolio backend running on port ${PORT}`));

@@ -69,13 +69,27 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
 .sum-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
 .sum-val { font-size: 0.95rem; font-weight: 700; }
 
-.tabs { display: flex; gap: 0.25rem; margin-bottom: 0.875rem; }
+.tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
 .tab {
   padding: 0.375rem 0.75rem; border-radius: 6px; font-size: 0.78rem; font-weight: 500;
   cursor: pointer; border: none; background: transparent; color: var(--muted);
   transition: all 0.15s;
 }
 .tab.active { background: var(--surface2); color: var(--text); }
+
+.sort-bar {
+  display: flex; align-items: center; gap: 0.375rem; margin-bottom: 0.875rem;
+  overflow-x: auto; padding-bottom: 0.25rem; scrollbar-width: none;
+}
+.sort-bar::-webkit-scrollbar { display: none; }
+.sort-label { font-size: 0.7rem; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.sort-btn {
+  padding: 0.3rem 0.625rem; border-radius: 6px; font-size: 0.72rem; font-weight: 500;
+  cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--muted);
+  white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
+}
+.sort-btn.active { background: var(--surface2); color: var(--text); border-color: var(--accent); }
+.sort-btn:active { opacity: 0.7; }
 
 .stock-card {
   background: var(--surface); border: 1px solid var(--border);
@@ -132,6 +146,8 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
   border-radius: 6px; padding: 0.4rem; font-size: 0.75rem; cursor: pointer; font-weight: 500;
 }
 .card-btn:active { opacity: 0.7; }
+.move-btn { flex: none !important; width: 38px; font-size: 1.1rem; padding: 0.4rem 0; }
+.move-btn:disabled { opacity: 0.25; cursor: default; }
 
 .empty {
   text-align: center; padding: 3.5rem 1rem; color: var(--muted);
@@ -207,6 +223,13 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
     <button class="tab" onclick="setFilter('undervalued', this)">Podhodnocené</button>
     <button class="tab" onclick="setFilter('overvalued', this)">Nadhodnocené</button>
   </div>
+  <div class="sort-bar">
+    <span class="sort-label">Řadit:</span>
+    <button class="sort-btn active" onclick="setSort('custom', this)">↕ Vlastní</button>
+    <button class="sort-btn" onclick="setSort('most-under', this)">▼ Nejpodhodnocenější</button>
+    <button class="sort-btn" onclick="setSort('most-over', this)">▲ Nejnadhodnocenější</button>
+    <button class="sort-btn" onclick="setSort('az', this)">A–Z</button>
+  </div>
   <div id="list"></div>
 </main>
 
@@ -263,6 +286,7 @@ function save(d) { localStorage.setItem('fv_watchlist', JSON.stringify(d)); }
 
 let prices = {};
 let filter = 'all';
+let sortBy = 'custom';
 
 async function fetchPrice(symbol) {
   const s = (symbol.includes('.') ? symbol : symbol + '.US').toLowerCase();
@@ -357,6 +381,27 @@ function setFilter(f, el) {
   render();
 }
 
+function setSort(s, el) {
+  sortBy = s;
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  render();
+}
+
+function moveUp(i) {
+  if (i <= 0) return;
+  const d = load();
+  [d[i - 1], d[i]] = [d[i], d[i - 1]];
+  save(d); render();
+}
+
+function moveDown(i) {
+  const d = load();
+  if (i >= d.length - 1) return;
+  [d[i], d[i + 1]] = [d[i + 1], d[i]];
+  save(d); render();
+}
+
 function render() {
   const list = load();
   const total = list.length;
@@ -371,11 +416,30 @@ function render() {
     [`<span style="color:var(--red)">▲ Nadh.</span>`, over],
   ].map(([l, v]) => `<div class="sum-card"><div class="sum-label">${l}</div><div class="sum-val">${v}</div></div>`).join('');
 
-  const visible = filter === 'all' ? list : list.filter(s => {
+  let visible = filter === 'all' ? [...list] : list.filter(s => {
     const p = prices[s.symbol];
     if (!p) return false;
     return getSignal(p.price, s.fair, s.tol || 5).type === filter;
   });
+
+  // Apply sort
+  if (sortBy === 'most-under') {
+    visible.sort((a, b) => {
+      const pa = prices[a.symbol]?.price, pb = prices[b.symbol]?.price;
+      const sa = pa != null ? getSignal(pa, a.fair, a.tol || 5).pct : Infinity;
+      const sb = pb != null ? getSignal(pb, b.fair, b.tol || 5).pct : Infinity;
+      return (sa ?? Infinity) - (sb ?? Infinity);
+    });
+  } else if (sortBy === 'most-over') {
+    visible.sort((a, b) => {
+      const pa = prices[a.symbol]?.price, pb = prices[b.symbol]?.price;
+      const sa = pa != null ? getSignal(pa, a.fair, a.tol || 5).pct : -Infinity;
+      const sb = pb != null ? getSignal(pb, b.fair, b.tol || 5).pct : -Infinity;
+      return (sb ?? -Infinity) - (sa ?? -Infinity);
+    });
+  } else if (sortBy === 'az') {
+    visible.sort((a, b) => a.symbol.localeCompare(b.symbol));
+  }
 
   if (!list.length) {
     document.getElementById('list').innerHTML = `
@@ -420,6 +484,11 @@ function render() {
         </div>`;
     }
 
+    const moveHtml = sortBy === 'custom' ? `
+      <button class="card-btn move-btn" onclick="event.stopPropagation();moveUp(${realIndex})" ${realIndex === 0 ? 'disabled' : ''} title="Posunout nahoru">↑</button>
+      <button class="card-btn move-btn" onclick="event.stopPropagation();moveDown(${realIndex})" ${realIndex === list.length - 1 ? 'disabled' : ''} title="Posunout dolů">↓</button>
+    ` : '';
+
     return `
     <div class="stock-card ${cardCls}" onclick="toggleExpand('card-${s.id}')">
       <div class="card-top">
@@ -443,6 +512,7 @@ function render() {
       ${upsideHtml}
       ${s.note ? `<div style="font-size:0.72rem;color:var(--muted);margin-top:0.375rem"><em>${s.note}</em></div>` : ''}
       <div class="card-actions" id="card-${s.id}" style="display:none">
+        ${moveHtml}
         <button class="card-btn" onclick="event.stopPropagation();openEditModal(${realIndex})">Upravit FV</button>
         <button class="card-btn" onclick="event.stopPropagation();deleteItem(${realIndex})" style="color:var(--red)">Odebrat</button>
       </div>

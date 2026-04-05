@@ -215,34 +215,94 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
 
 .spin { display: inline-block; animation: rotate 0.8s linear infinite; }
 @keyframes rotate { to { transform: rotate(360deg); } }
+
+/* ── Page navigation ── */
+.page-nav {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  display: flex; gap: 0; position: sticky; top: 53px; z-index: 19;
+}
+.page-tab {
+  flex: 1; padding: 0.625rem 0.5rem; font-size: 0.82rem; font-weight: 600;
+  border: none; background: transparent; color: var(--muted); cursor: pointer;
+  border-bottom: 2px solid transparent; transition: all 0.15s;
+}
+.page-tab.active { color: #fff; border-bottom-color: var(--accent); }
+
+/* ── BUY/SELL Plan ── */
+.plan-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 0.875rem 1rem; margin-bottom: 0.5rem;
+  position: relative; overflow: hidden;
+}
+.plan-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--accent);
+}
+.plan-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+.plan-price { font-size: 1rem; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.plan-price-sub { font-size: 0.7rem; color: var(--muted); margin-top: 1px; }
+
+.plan-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;
+}
+.plan-cell {
+  background: var(--surface2); border-radius: 8px; padding: 0.5rem 0.625rem;
+}
+.plan-cell-label {
+  font-size: 0.65rem; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.05em; margin-bottom: 3px;
+}
+.plan-cell-val { font-size: 0.9rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.plan-cell-hint { font-size: 0.68rem; color: var(--muted); margin-top: 2px; }
+.plan-badge {
+  display: inline-block; font-size: 0.65rem; font-weight: 700;
+  padding: 0.1rem 0.4rem; border-radius: 4px; margin-top: 3px;
+}
+.plan-badge.go  { background: var(--green-bg); color: var(--green); border: 1px solid #26a69a33; }
+.plan-badge.wait{ background: #f9a82518; color: var(--yellow); border: 1px solid #f9a82533; }
+
+.plan-actions { display: flex; gap: 0.5rem; margin-top: 0.625rem; padding-top: 0.625rem; border-top: 1px solid var(--border); }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Fair Value Watchlist</h1>
+  <h1 id="pageTitle">Fair Value Watchlist</h1>
   <div class="header-right">
     <span class="update-time" id="updateTime">—</span>
     <button class="btn btn-ghost" id="refreshBtn" onclick="doRefresh()">↻</button>
-    <button class="btn btn-accent" onclick="openAddModal()">+ Přidat</button>
+    <button class="btn btn-accent" id="addBtn" onclick="handleAdd()">+ Přidat</button>
   </div>
 </header>
 
+<nav class="page-nav">
+  <button class="page-tab active" onclick="setPage('watchlist', this)">📊 Watchlist</button>
+  <button class="page-tab" onclick="setPage('plan', this)">🎯 BUY / SELL</button>
+</nav>
+
 <main>
-  <div class="summary" id="summary"></div>
-  <div class="tabs">
-    <button class="tab active" onclick="setFilter('all', this)">Vše</button>
-    <button class="tab" onclick="setFilter('undervalued', this)">Podhodnocené</button>
-    <button class="tab" onclick="setFilter('overvalued', this)">Nadhodnocené</button>
+  <!-- PAGE: Watchlist -->
+  <div id="page-watchlist">
+    <div class="summary" id="summary"></div>
+    <div class="tabs">
+      <button class="tab active" onclick="setFilter('all', this)">Vše</button>
+      <button class="tab" onclick="setFilter('undervalued', this)">Podhodnocené</button>
+      <button class="tab" onclick="setFilter('overvalued', this)">Nadhodnocené</button>
+    </div>
+    <div class="sort-bar">
+      <span class="sort-label">Řadit:</span>
+      <button class="sort-btn active" onclick="setSort('custom', this)">↕ Vlastní</button>
+      <button class="sort-btn" onclick="setSort('most-under', this)">▼ Nejpodhodnocenější</button>
+      <button class="sort-btn" onclick="setSort('most-over', this)">▲ Nejnadhodnocenější</button>
+      <button class="sort-btn" onclick="setSort('az', this)">A–Z</button>
+    </div>
+    <div id="list"></div>
   </div>
-  <div class="sort-bar">
-    <span class="sort-label">Řadit:</span>
-    <button class="sort-btn active" onclick="setSort('custom', this)">↕ Vlastní</button>
-    <button class="sort-btn" onclick="setSort('most-under', this)">▼ Nejpodhodnocenější</button>
-    <button class="sort-btn" onclick="setSort('most-over', this)">▲ Nejnadhodnocenější</button>
-    <button class="sort-btn" onclick="setSort('az', this)">A–Z</button>
+
+  <!-- PAGE: BUY/SELL Plan -->
+  <div id="page-plan" style="display:none">
+    <div id="planList"></div>
   </div>
-  <div id="list"></div>
 </main>
 
 <div class="overlay" id="overlay" onclick="overlayClick(event)">
@@ -290,6 +350,51 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
   </div>
 </div>
 
+<div class="overlay" id="overlayPlan" onclick="overlayPlanClick(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h2 id="planModalTitle">Přidat plán</h2>
+
+    <div class="field" id="planSymbolField">
+      <label>Symbol / Ticker</label>
+      <div class="ac-wrap">
+        <input id="pSymbol" placeholder="AAPL, MSFT, TSLA..." autocomplete="off" autocapitalize="characters" oninput="onPlanSymbolInput()" onblur="setTimeout(closePlanAc,150)">
+        <div class="ac-list" id="planAcList"></div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label>Cíl nákupu (USD)</label>
+        <input id="pBuy" type="number" min="0" step="any" placeholder="150.00" inputmode="decimal">
+        <div class="field-hint">Cena, při které chceš nakoupit</div>
+      </div>
+      <div class="field">
+        <label>Cíl prodeje (USD)</label>
+        <input id="pSell" type="number" min="0" step="any" placeholder="220.00" inputmode="decimal">
+        <div class="field-hint">Cena, při které chceš prodat</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>% pozice k prodeji</label>
+      <input id="pSellPct" type="number" min="1" max="100" step="1" placeholder="25" inputmode="decimal">
+      <div class="field-hint">Kolik procent pozice chceš prodat</div>
+    </div>
+
+    <div class="field">
+      <label>Poznámka</label>
+      <input id="pNote" placeholder="Volitelná poznámka...">
+    </div>
+
+    <div class="error-msg" id="planModalError"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closePlanModal()">Zrušit</button>
+      <button class="btn btn-accent" id="planModalSubmit" onclick="submitPlanModal()">Přidat</button>
+    </div>
+  </div>
+</div>
+
 <script>
 function load() {
   try { return JSON.parse(localStorage.getItem('fv_watchlist') || '[]'); } catch { return []; }
@@ -299,6 +404,29 @@ function save(d) { localStorage.setItem('fv_watchlist', JSON.stringify(d)); }
 let prices = {};
 let filter = 'all';
 let sortBy = 'custom';
+let page = 'watchlist';
+
+// ── Plan data ──
+function loadPlan() {
+  try { return JSON.parse(localStorage.getItem('fv_plan') || '[]'); } catch { return []; }
+}
+function savePlan(d) { localStorage.setItem('fv_plan', JSON.stringify(d)); }
+
+// ── Page switching ──
+function setPage(p, el) {
+  page = p;
+  document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('page-watchlist').style.display = p === 'watchlist' ? '' : 'none';
+  document.getElementById('page-plan').style.display = p === 'plan' ? '' : 'none';
+  document.getElementById('pageTitle').textContent = p === 'watchlist' ? 'Fair Value Watchlist' : 'BUY / SELL Plán';
+  if (p === 'plan') renderPlan();
+}
+
+function handleAdd() {
+  if (page === 'plan') openPlanModal(-1);
+  else openAddModal();
+}
 
 // Consistent color per ticker for fallback avatar
 function symbolColor(sym) {
@@ -643,6 +771,176 @@ function pickAc(sym) {
 function closeAc() {
   document.getElementById('acList').classList.remove('open');
   document.getElementById('acList').innerHTML = '';
+}
+
+// ── BUY/SELL Plan rendering ──
+function renderPlan() {
+  const plan = loadPlan();
+  const el = document.getElementById('planList');
+
+  if (!plan.length) {
+    el.innerHTML = `<div class="empty"><strong>Plán je prázdný</strong>Přidej akcii tlačítkem „+ Přidat".<br>Nastav cílovou cenu nákupu a prodeje.</div>`;
+    return;
+  }
+
+  el.innerHTML = plan.map((entry, i) => {
+    const curr = prices[entry.symbol]?.price ?? null;
+
+    const buyVal   = entry.buyTarget  != null ? entry.buyTarget  : null;
+    const sellVal  = entry.sellTarget != null ? entry.sellTarget : null;
+    const sellPct  = entry.sellPct    != null ? entry.sellPct    : null;
+
+    // BUY status
+    let buyHtml = '<span style="color:var(--muted)">—</span>';
+    if (buyVal != null) {
+      const canBuy = curr != null && curr <= buyVal;
+      const diff   = curr != null ? Math.abs(curr - buyVal) : null;
+      buyHtml = `
+        <div class="plan-cell-val" style="color:${canBuy ? 'var(--green)' : '#fff'}">$${fmt(buyVal)}</div>
+        ${curr != null ? `<div class="plan-cell-hint">${canBuy ? 'Aktuálně pod cílem' : `$${fmt(diff)} nad cílem`}</div>` : ''}
+        <span class="plan-badge ${canBuy ? 'go' : 'wait'}">${canBuy ? '✓ NAKUP' : 'ČEKEJ'}</span>`;
+    }
+
+    // SELL status
+    let sellHtml = '<span style="color:var(--muted)">—</span>';
+    if (sellVal != null) {
+      const canSell = curr != null && curr >= sellVal;
+      const diff    = curr != null ? Math.abs(curr - sellVal) : null;
+      sellHtml = `
+        <div class="plan-cell-val" style="color:${canSell ? 'var(--red)' : '#fff'}">$${fmt(sellVal)}${sellPct != null ? ` · ${sellPct}%` : ''}</div>
+        ${curr != null ? `<div class="plan-cell-hint">${canSell ? 'Aktuálně nad cílem' : `$${fmt(diff)} pod cílem`}</div>` : ''}
+        <span class="plan-badge ${canSell ? 'go' : 'wait'}" style="${canSell ? 'background:var(--red-bg);color:var(--red);border-color:#ef535033' : ''}">${canSell ? '✓ PRODEJ' : 'ČEKEJ'}</span>`;
+    }
+
+    return `
+    <div class="plan-card">
+      <div class="plan-header">
+        <div class="stock-info">
+          ${logoHtml(entry.symbol)}
+          <div class="stock-text">
+            <div class="stock-symbol">${entry.symbol}</div>
+            <div class="stock-name">${entry.name || entry.symbol}</div>
+          </div>
+        </div>
+        <div class="price-block">
+          <div class="plan-price">${curr != null ? '$' + fmt(curr) : '<span style="color:var(--muted);font-size:.85rem">—</span>'}</div>
+          <div class="plan-price-sub">Aktuální cena</div>
+        </div>
+      </div>
+      <div class="plan-row">
+        <div class="plan-cell">
+          <div class="plan-cell-label">Cíl nákupu</div>
+          ${buyHtml}
+        </div>
+        <div class="plan-cell">
+          <div class="plan-cell-label">Cíl prodeje</div>
+          ${sellHtml}
+        </div>
+      </div>
+      ${entry.note ? `<div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.5rem"><em>${entry.note}</em></div>` : ''}
+      <div class="plan-actions">
+        <button class="card-btn" onclick="openPlanModal(${i})">Upravit</button>
+        <button class="card-btn" onclick="deletePlan(${i})" style="color:var(--red)">Odebrat</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function deletePlan(i) {
+  if (!confirm('Odebrat tento záznam?')) return;
+  const d = loadPlan(); d.splice(i, 1); savePlan(d); renderPlan();
+}
+
+let planEditIndex = -1;
+
+function openPlanModal(i) {
+  planEditIndex = i;
+  const isEdit = i >= 0;
+  document.getElementById('planModalTitle').textContent = isEdit ? `Upravit plán` : 'Přidat plán';
+  document.getElementById('planModalSubmit').textContent = isEdit ? 'Uložit' : 'Přidat';
+  document.getElementById('planSymbolField').style.display = isEdit ? 'none' : '';
+  document.getElementById('planModalError').textContent = '';
+
+  if (isEdit) {
+    const entry = loadPlan()[i];
+    document.getElementById('pSymbol').value = entry.symbol;
+    document.getElementById('pBuy').value    = entry.buyTarget  ?? '';
+    document.getElementById('pSell').value   = entry.sellTarget ?? '';
+    document.getElementById('pSellPct').value = entry.sellPct   ?? '';
+    document.getElementById('pNote').value   = entry.note       ?? '';
+  } else {
+    ['pSymbol','pBuy','pSell','pSellPct','pNote'].forEach(id => document.getElementById(id).value = '');
+  }
+  document.getElementById('overlayPlan').classList.add('open');
+}
+
+function closePlanModal() {
+  document.getElementById('overlayPlan').classList.remove('open');
+  closePlanAc();
+}
+function overlayPlanClick(e) { if (e.target === document.getElementById('overlayPlan')) closePlanModal(); }
+
+function submitPlanModal() {
+  const buyTarget  = document.getElementById('pBuy').value.trim();
+  const sellTarget = document.getElementById('pSell').value.trim();
+  const sellPct    = document.getElementById('pSellPct').value.trim();
+  const note       = document.getElementById('pNote').value.trim();
+
+  const buyNum  = buyTarget  ? parseFloat(buyTarget)  : null;
+  const sellNum = sellTarget ? parseFloat(sellTarget) : null;
+  const pctNum  = sellPct    ? parseFloat(sellPct)    : null;
+
+  if (buyNum  !== null && (isNaN(buyNum)  || buyNum  <= 0)) { document.getElementById('planModalError').textContent = 'Neplatná cena nákupu.'; return; }
+  if (sellNum !== null && (isNaN(sellNum) || sellNum <= 0)) { document.getElementById('planModalError').textContent = 'Neplatná cena prodeje.'; return; }
+  if (pctNum  !== null && (isNaN(pctNum)  || pctNum  <= 0 || pctNum > 100)) { document.getElementById('planModalError').textContent = '% musí být 1–100.'; return; }
+
+  const d = loadPlan();
+  if (planEditIndex >= 0) {
+    d[planEditIndex] = { ...d[planEditIndex], buyTarget: buyNum, sellTarget: sellNum, sellPct: pctNum, note };
+    savePlan(d); closePlanModal(); renderPlan(); return;
+  }
+
+  const symbol = document.getElementById('pSymbol').value.trim().toUpperCase();
+  if (!symbol) { document.getElementById('planModalError').textContent = 'Zadej ticker symbol.'; return; }
+
+  // Get name from watchlist if available
+  const wl = load();
+  const wlEntry = wl.find(x => x.symbol === symbol);
+  const name = wlEntry?.name || symbol;
+
+  d.push({ id: Date.now().toString(), symbol, name, buyTarget: buyNum, sellTarget: sellNum, sellPct: pctNum, note });
+  savePlan(d); closePlanModal();
+
+  // Fetch price if not cached
+  if (!prices[symbol]) {
+    fetchPrice(symbol).then(p => { if (p) { prices[symbol] = p; } renderPlan(); });
+  }
+  renderPlan();
+}
+
+let planAcTimer;
+function onPlanSymbolInput() {
+  const q = document.getElementById('pSymbol').value.trim();
+  clearTimeout(planAcTimer);
+  if (!q) { closePlanAc(); return; }
+  planAcTimer = setTimeout(() => searchPlanAc(q), 300);
+}
+function searchPlanAc(q) {
+  const common = ['AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','BRK.B','JPM','V','WMT','XOM',
+    'SPY','QQQ','VTI','VOO','IWM','GLD','TLT','XLF','XLK','ARKK','DIA','IEFA'];
+  // Also include symbols already on watchlist
+  const wlSymbols = load().map(x => x.symbol);
+  const all = [...new Set([...wlSymbols, ...common])];
+  const matches = all.filter(s => s.startsWith(q.toUpperCase())).slice(0, 6);
+  if (!matches.length) { closePlanAc(); return; }
+  const list = document.getElementById('planAcList');
+  list.innerHTML = matches.map(s => `<div class="ac-item" onclick="pickPlanAc('${s}')"><span class="ac-sym">${s}</span></div>`).join('');
+  list.classList.add('open');
+}
+function pickPlanAc(sym) { document.getElementById('pSymbol').value = sym; closePlanAc(); }
+function closePlanAc() {
+  document.getElementById('planAcList').classList.remove('open');
+  document.getElementById('planAcList').innerHTML = '';
 }
 
 render();

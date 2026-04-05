@@ -105,11 +105,23 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
 .stock-card.overvalued::before { background: var(--red); }
 .stock-card.fair::before { background: var(--yellow); }
 
-.card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.625rem; }
-.stock-info { flex: 1; }
+.card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.625rem; }
+.stock-info { flex: 1; display: flex; align-items: center; gap: 0.625rem; min-width: 0; }
+.stock-logo {
+  width: 36px; height: 36px; border-radius: 50%;
+  object-fit: contain; background: #fff;
+  border: 1px solid var(--border); flex-shrink: 0; padding: 3px;
+}
+.logo-fallback {
+  width: 36px; height: 36px; border-radius: 50%;
+  align-items: center; justify-content: center;
+  font-size: 0.85rem; font-weight: 700; color: #fff;
+  flex-shrink: 0; display: none;
+}
+.stock-text { min-width: 0; }
 .stock-symbol { font-size: 1rem; font-weight: 700; color: #fff; }
-.stock-name { font-size: 0.72rem; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
-.price-block { text-align: right; }
+.stock-name { font-size: 0.72rem; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+.price-block { text-align: right; flex-shrink: 0; }
 .current-price { font-size: 1.1rem; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
 .price-change { font-size: 0.75rem; margin-top: 1px; font-variant-numeric: tabular-nums; }
 
@@ -287,6 +299,22 @@ function save(d) { localStorage.setItem('fv_watchlist', JSON.stringify(d)); }
 let prices = {};
 let filter = 'all';
 let sortBy = 'custom';
+
+// Consistent color per ticker for fallback avatar
+function symbolColor(sym) {
+  const palette = ['#2962ff','#26a69a','#ef5350','#f9a825','#ab47bc','#42a5f5','#66bb6a','#ff7043','#26c6da','#ec407a'];
+  let h = 0;
+  for (let i = 0; i < sym.length; i++) h = (h * 31 + sym.charCodeAt(i)) & 0xffff;
+  return palette[h % palette.length];
+}
+
+function logoHtml(symbol) {
+  const url = `https://assets.parqet.com/logos/symbol/${encodeURIComponent(symbol)}`;
+  const color = symbolColor(symbol);
+  const letter = symbol.replace(/[^A-Z]/gi, '').charAt(0).toUpperCase() || symbol.charAt(0).toUpperCase();
+  return `<img class="stock-logo" src="${url}" alt=""
+    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="logo-fallback" style="background:${color}">${letter}</div>`;
+}
 
 async function fetchPrice(symbol) {
   const s = (symbol.includes('.') ? symbol : symbol + '.US').toLowerCase();
@@ -493,8 +521,11 @@ function render() {
     <div class="stock-card ${cardCls}" onclick="toggleExpand('card-${s.id}')">
       <div class="card-top">
         <div class="stock-info">
-          <div class="stock-symbol">${s.symbol}</div>
-          <div class="stock-name">${s.name || s.symbol}</div>
+          ${logoHtml(s.symbol)}
+          <div class="stock-text">
+            <div class="stock-symbol">${s.symbol}</div>
+            <div class="stock-name">${s.name || s.symbol}</div>
+          </div>
         </div>
         <div class="price-block">
           <div class="current-price">${curr !== null ? '$' + fmt(curr) : '<span style="color:var(--muted);font-size:.85rem">Načítám…</span>'}</div>

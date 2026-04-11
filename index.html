@@ -301,6 +301,12 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
 
   <!-- PAGE: BUY/SELL Plan -->
   <div id="page-plan" style="display:none">
+    <div class="sort-bar">
+      <span class="sort-label">Řadit:</span>
+      <button class="sort-btn active" id="ps-custom"  onclick="setPlanSort('custom', this)">↕ Vlastní</button>
+      <button class="sort-btn"        id="ps-buy"     onclick="setPlanSort('buy', this)">▼ Nejblíže k nákupu</button>
+      <button class="sort-btn"        id="ps-sell"    onclick="setPlanSort('sell', this)">▲ Nejblíže k prodeji</button>
+    </div>
     <div id="planList"></div>
   </div>
 </main>
@@ -426,6 +432,29 @@ function setPage(p, el) {
 function handleAdd() {
   if (page === 'plan') openPlanModal(-1);
   else openAddModal();
+}
+
+let planSortBy = 'custom';
+
+function setPlanSort(s, el) {
+  planSortBy = s;
+  document.querySelectorAll('#page-plan .sort-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderPlan();
+}
+
+function moveUpPlan(i) {
+  if (i <= 0) return;
+  const d = loadPlan();
+  [d[i - 1], d[i]] = [d[i], d[i - 1]];
+  savePlan(d); renderPlan();
+}
+
+function moveDownPlan(i) {
+  const d = loadPlan();
+  if (i >= d.length - 1) return;
+  [d[i], d[i + 1]] = [d[i + 1], d[i]];
+  savePlan(d); renderPlan();
 }
 
 // Consistent color per ticker for fallback avatar
@@ -783,7 +812,29 @@ function renderPlan() {
     return;
   }
 
-  el.innerHTML = plan.map((entry, i) => {
+  // Build sorted view (keep realIndex for move buttons)
+  let sorted = plan.map((entry, realIndex) => ({ entry, realIndex }));
+
+  if (planSortBy === 'buy') {
+    sorted.sort((a, b) => {
+      const ca = prices[a.entry.symbol]?.price;
+      const cb = prices[b.entry.symbol]?.price;
+      const da = (ca != null && a.entry.buyTarget != null) ? Math.abs((a.entry.buyTarget - ca) / ca) : Infinity;
+      const db = (cb != null && b.entry.buyTarget != null) ? Math.abs((b.entry.buyTarget - cb) / cb) : Infinity;
+      return da - db;
+    });
+  } else if (planSortBy === 'sell') {
+    sorted.sort((a, b) => {
+      const ca = prices[a.entry.symbol]?.price;
+      const cb = prices[b.entry.symbol]?.price;
+      const da = (ca != null && a.entry.sellTarget != null) ? Math.abs((a.entry.sellTarget - ca) / ca) : Infinity;
+      const db = (cb != null && b.entry.sellTarget != null) ? Math.abs((b.entry.sellTarget - cb) / cb) : Infinity;
+      return da - db;
+    });
+  }
+
+  el.innerHTML = sorted.map(({ entry, realIndex }) => {
+    const i = realIndex;
     const curr = prices[entry.symbol]?.price ?? null;
 
     const buyVal   = entry.buyTarget  != null ? entry.buyTarget  : null;
@@ -843,6 +894,10 @@ function renderPlan() {
       </div>
       ${entry.note ? `<div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.5rem"><em>${entry.note}</em></div>` : ''}
       <div class="plan-actions">
+        ${planSortBy === 'custom' ? `
+          <button class="card-btn move-btn" onclick="moveUpPlan(${i})" ${i === 0 ? 'disabled' : ''} title="Posunout nahoru">↑</button>
+          <button class="card-btn move-btn" onclick="moveDownPlan(${i})" ${i === plan.length - 1 ? 'disabled' : ''} title="Posunout dolů">↓</button>
+        ` : ''}
         <button class="card-btn" onclick="openPlanModal(${i})">Upravit</button>
         <button class="card-btn" onclick="deletePlan(${i})" style="color:var(--red)">Odebrat</button>
       </div>

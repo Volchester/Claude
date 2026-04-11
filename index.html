@@ -794,10 +794,12 @@ function renderPlan() {
     let buyHtml = '<span style="color:var(--muted)">—</span>';
     if (buyVal != null) {
       const canBuy = curr != null && curr <= buyVal;
-      const diff   = curr != null ? Math.abs(curr - buyVal) : null;
+      const pctToBuy = curr != null ? ((buyVal - curr) / curr * 100) : null;
       buyHtml = `
         <div class="plan-cell-val" style="color:${canBuy ? 'var(--green)' : '#fff'}">$${fmt(buyVal)}</div>
-        ${curr != null ? `<div class="plan-cell-hint">${canBuy ? 'Aktuálně pod cílem' : `$${fmt(diff)} nad cílem`}</div>` : ''}
+        ${pctToBuy != null ? `<div class="plan-cell-hint" style="color:${canBuy ? 'var(--green)' : 'var(--muted)'}">
+          ${canBuy ? `▲ ${Math.abs(pctToBuy).toFixed(1)}% nad cílem` : `▼ ${Math.abs(pctToBuy).toFixed(1)}% k nákupu`}
+        </div>` : ''}
         <span class="plan-badge ${canBuy ? 'go' : 'wait'}">${canBuy ? '✓ NAKUP' : 'ČEKEJ'}</span>`;
     }
 
@@ -805,10 +807,12 @@ function renderPlan() {
     let sellHtml = '<span style="color:var(--muted)">—</span>';
     if (sellVal != null) {
       const canSell = curr != null && curr >= sellVal;
-      const diff    = curr != null ? Math.abs(curr - sellVal) : null;
+      const pctToSell = curr != null ? ((sellVal - curr) / curr * 100) : null;
       sellHtml = `
         <div class="plan-cell-val" style="color:${canSell ? 'var(--red)' : '#fff'}">$${fmt(sellVal)}${sellPct != null ? ` · ${sellPct}%` : ''}</div>
-        ${curr != null ? `<div class="plan-cell-hint">${canSell ? 'Aktuálně nad cílem' : `$${fmt(diff)} pod cílem`}</div>` : ''}
+        ${pctToSell != null ? `<div class="plan-cell-hint" style="color:${canSell ? 'var(--red)' : 'var(--muted)'}">
+          ${canSell ? `▼ ${Math.abs(pctToSell).toFixed(1)}% pod cílem` : `▲ ${Math.abs(pctToSell).toFixed(1)}% k prodeji`}
+        </div>` : ''}
         <span class="plan-badge ${canSell ? 'go' : 'wait'}" style="${canSell ? 'background:var(--red-bg);color:var(--red);border-color:#ef535033' : ''}">${canSell ? '✓ PRODEJ' : 'ČEKEJ'}</span>`;
     }
 

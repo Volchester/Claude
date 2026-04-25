@@ -216,6 +216,25 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
 .spin { display: inline-block; animation: rotate 0.8s linear infinite; }
 @keyframes rotate { to { transform: rotate(360deg); } }
 
+/* ── VIX card ── */
+.vix-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 0.75rem;
+  display: flex; justify-content: space-between; align-items: center;
+  position: relative; overflow: hidden;
+}
+.vix-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #ab47bc; }
+.vix-left { display: flex; flex-direction: column; gap: 2px; }
+.vix-title { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
+.vix-value { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.vix-change { font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.vix-right { display: flex; flex-direction: column; align-items: flex-end; gap: 0.375rem; }
+.vix-badge {
+  font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.55rem;
+  border-radius: 6px; white-space: nowrap;
+}
+.vix-desc { font-size: 0.65rem; color: var(--muted); text-align: right; max-width: 110px; line-height: 1.4; }
+
 /* ── Page navigation ── */
 .page-nav {
   background: var(--surface); border-bottom: 1px solid var(--border);
@@ -283,6 +302,7 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
 <main>
   <!-- PAGE: Watchlist -->
   <div id="page-watchlist">
+    <div class="vix-card" id="vixCard"><div style="color:var(--muted);font-size:.85rem">Načítám VIX…</div></div>
     <div class="summary" id="summary"></div>
     <div class="tabs">
       <button class="tab active" onclick="setFilter('all', this)">Vše</button>
@@ -408,6 +428,7 @@ function load() {
 function save(d) { localStorage.setItem('fv_watchlist', JSON.stringify(d)); }
 
 let prices = {};
+let vixData = null;
 let filter = 'all';
 let sortBy = 'custom';
 let page = 'watchlist';
@@ -474,7 +495,7 @@ function logoHtml(symbol) {
 }
 
 async function fetchPrice(symbol) {
-  const s = (symbol.includes('.') ? symbol : symbol + '.US').toLowerCase();
+  const s = (symbol.startsWith('^') || symbol.includes('.') ? symbol : symbol + '.US').toLowerCase();
   const stooqJson = `https://stooq.com/q/l/?s=${s}&f=sd2t2ohlcv&h&e=json`;
   const stooqCsv  = `https://stooq.com/q/l/?s=${s}&f=sd2t2ohlcv&h&e=csv`;
 
@@ -523,19 +544,55 @@ async function fetchPrice(symbol) {
 
 async function doRefresh() {
   const list = load();
-  if (!list.length) return;
   const btn = document.getElementById('refreshBtn');
   btn.innerHTML = '<span class="spin">↻</span>';
   btn.disabled = true;
   document.getElementById('updateTime').textContent = 'Obnovuji...';
-  const results = await Promise.all(list.map(s => fetchPrice(s.symbol)));
-  list.forEach((s, i) => { if (results[i]) prices[s.symbol] = results[i]; });
+  const [vixResult, ...stockResults] = await Promise.all([
+    fetchPrice('^VIX'),
+    ...list.map(s => fetchPrice(s.symbol))
+  ]);
+  if (vixResult) vixData = vixResult;
+  list.forEach((s, i) => { if (stockResults[i]) prices[s.symbol] = stockResults[i]; });
   const now = new Date();
   document.getElementById('updateTime').textContent =
     `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
   btn.innerHTML = '↻';
   btn.disabled = false;
   render();
+}
+
+function renderVix() {
+  const v = vixData?.price ?? null;
+  const chg = vixData?.change1d ?? null;
+  let color = 'var(--muted)', label = 'Načítám…', desc = '', badgeStyle = 'background:#2a2e39;color:var(--muted)';
+  if (v !== null) {
+    if (v < 15) {
+      color = 'var(--green)'; label = 'Nízká'; desc = 'Trh je klidný';
+      badgeStyle = 'background:#26a69a18;color:var(--green);border:1px solid #26a69a33';
+    } else if (v < 20) {
+      color = '#fff'; label = 'Normální'; desc = 'Obvyklá volatilita';
+      badgeStyle = 'background:#2a2e39;color:var(--text);border:1px solid var(--border)';
+    } else if (v < 30) {
+      color = 'var(--yellow)'; label = 'Zvýšená'; desc = 'Trh je nervózní';
+      badgeStyle = 'background:#f9a82518;color:var(--yellow);border:1px solid #f9a82533';
+    } else {
+      color = 'var(--red)'; label = 'Vysoká'; desc = 'Vysoký strach na trhu';
+      badgeStyle = 'background:#ef535018;color:var(--red);border:1px solid #ef535033';
+    }
+  }
+  const vixEl = document.getElementById('vixCard');
+  if (!vixEl) return;
+  vixEl.innerHTML = `
+    <div class="vix-left">
+      <div class="vix-title">VIX · Volatility Index</div>
+      <div class="vix-value" style="color:${color}">${v !== null ? v.toFixed(2) : '—'}</div>
+      ${chg !== null ? `<div class="vix-change" style="color:${chg >= 0 ? 'var(--red)' : 'var(--green)'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% dnes</div>` : ''}
+    </div>
+    <div class="vix-right">
+      <span class="vix-badge" style="${badgeStyle}">${label}</span>
+      <div class="vix-desc">${desc}</div>
+    </div>`;
 }
 
 function getSignal(current, fair, tol) {
@@ -588,6 +645,7 @@ function moveDown(i) {
 }
 
 function render() {
+  renderVix();
   const list = load();
   const total = list.length;
   const under = list.filter(s => { const p = prices[s.symbol]; return p && getSignal(p.price, s.fair, s.tol || 5).type === 'undervalued'; }).length;

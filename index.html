@@ -494,6 +494,39 @@ function logoHtml(symbol) {
     onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="logo-fallback" style="background:${color}">${letter}</div>`;
 }
 
+async function fetchVix() {
+  // Stooq uses different symbol variants for VIX — try all known ones
+  const candidates = ['vix', '^vix', 'vix.cboe'];
+  for (const sym of candidates) {
+    const url = `https://stooq.com/q/l/?s=${sym}&f=sd2t2ohlcv&h&e=json`;
+    try {
+      const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+        { signal: AbortSignal.timeout(9000) });
+      if (r.ok) {
+        const w = await r.json();
+        const d = JSON.parse(w.contents);
+        const item = d?.symbols?.[0];
+        const close = parseFloat(item?.close ?? item?.c ?? 0);
+        const open  = parseFloat(item?.open  ?? item?.o ?? 0);
+        if (close > 0) return { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null };
+      }
+    } catch {}
+    // Also try via corsproxy
+    try {
+      const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+        { signal: AbortSignal.timeout(9000) });
+      if (r.ok) {
+        const d = await r.json();
+        const item = d?.symbols?.[0];
+        const close = parseFloat(item?.close ?? item?.c ?? 0);
+        const open  = parseFloat(item?.open  ?? item?.o ?? 0);
+        if (close > 0) return { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null };
+      }
+    } catch {}
+  }
+  return null;
+}
+
 async function fetchPrice(symbol) {
   const s = (symbol.startsWith('^') || symbol.includes('.') ? symbol : symbol + '.US').toLowerCase();
   const stooqJson = `https://stooq.com/q/l/?s=${s}&f=sd2t2ohlcv&h&e=json`;
@@ -549,7 +582,7 @@ async function doRefresh() {
   btn.disabled = true;
   document.getElementById('updateTime').textContent = 'Obnovuji...';
   const [vixResult, ...stockResults] = await Promise.all([
-    fetchPrice('^VIX'),
+    fetchVix(),
     ...list.map(s => fetchPrice(s.symbol))
   ]);
   if (vixResult) vixData = vixResult;

@@ -495,35 +495,63 @@ function logoHtml(symbol) {
 }
 
 async function fetchVix() {
-  // Stooq uses different symbol variants for VIX — try all known ones
-  const candidates = ['vix', '^vix', 'vix.cboe'];
-  for (const sym of candidates) {
-    const url = `https://stooq.com/q/l/?s=${sym}&f=sd2t2ohlcv&h&e=json`;
+  const proxies = [
+    url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`
+  ];
+
+  async function tryProxy(proxyFn, sourceUrl, parse) {
+    const pUrl = proxyFn(sourceUrl);
     try {
-      const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-        { signal: AbortSignal.timeout(9000) });
-      if (r.ok) {
-        const w = await r.json();
-        const d = JSON.parse(w.contents);
-        const item = d?.symbols?.[0];
-        const close = parseFloat(item?.close ?? item?.c ?? 0);
-        const open  = parseFloat(item?.open  ?? item?.o ?? 0);
-        if (close > 0) return { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null };
-      }
-    } catch {}
-    // Also try via corsproxy
-    try {
-      const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-        { signal: AbortSignal.timeout(9000) });
-      if (r.ok) {
-        const d = await r.json();
-        const item = d?.symbols?.[0];
-        const close = parseFloat(item?.close ?? item?.c ?? 0);
-        const open  = parseFloat(item?.open  ?? item?.o ?? 0);
-        if (close > 0) return { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null };
-      }
-    } catch {}
+      const r = await fetch(pUrl, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) return null;
+      const data = await r.json();
+      const raw = pUrl.includes('allorigins') ? JSON.parse(data.contents) : data;
+      return parse(raw);
+    } catch { return null; }
   }
+
+  // 1. Stooq (multiple symbol variants)
+  for (const sym of ['vix', '^vix']) {
+    const stooqUrl = `https://stooq.com/q/l/?s=${sym}&f=sd2t2ohlcv&h&e=json`;
+    const parseStooq = raw => {
+      const item = raw?.symbols?.[0];
+      const close = parseFloat(item?.close ?? item?.c ?? 0);
+      const open  = parseFloat(item?.open  ?? item?.o ?? 0);
+      return close > 0 ? { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null } : null;
+    };
+    for (const proxy of proxies) {
+      const result = await tryProxy(proxy, stooqUrl, parseStooq);
+      if (result) return result;
+    }
+  }
+
+  // 2. Yahoo Finance v7
+  const yhUrl = 'https://query2.finance.yahoo.com/v7/finance/quote?symbols=%5EVIX';
+  const parseYhV7 = raw => {
+    const q = raw?.quoteResponse?.result?.[0];
+    return q?.regularMarketPrice > 0
+      ? { price: q.regularMarketPrice, change1d: q.regularMarketChangePercent ?? null }
+      : null;
+  };
+  for (const proxy of proxies) {
+    const result = await tryProxy(proxy, yhUrl, parseYhV7);
+    if (result) return result;
+  }
+
+  // 3. Yahoo Finance v8 chart
+  const yhChartUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=2d';
+  const parseYhV8 = raw => {
+    const meta  = raw?.chart?.result?.[0]?.meta;
+    const price = meta?.regularMarketPrice;
+    const prev  = meta?.previousClose ?? meta?.chartPreviousClose;
+    return price > 0 ? { price, change1d: prev ? ((price - prev) / prev * 100) : null } : null;
+  };
+  for (const proxy of proxies) {
+    const result = await tryProxy(proxy, yhChartUrl, parseYhV8);
+    if (result) return result;
+  }
+
   return null;
 }
 

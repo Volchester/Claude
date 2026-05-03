@@ -136,6 +136,24 @@ app.delete('/api/portfolio/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// GET /api/quote/:symbol — fetch price + day change for watchlist
+app.get('/api/quote/:symbol', async (req, res) => {
+  try {
+    const quote = await yahooFinance.quote(req.params.symbol);
+    const price = quote.regularMarketPrice;
+    const prev  = quote.regularMarketPreviousClose;
+    if (!(price > 0)) return res.status(404).json({ error: 'No price' });
+    res.json({
+      price,
+      change1d: prev > 0 ? ((price - prev) / prev) * 100 : null,
+      name: quote.shortName || quote.longName || req.params.symbol,
+      currency: quote.currency || 'USD',
+    });
+  } catch {
+    res.status(404).json({ error: 'Not found' });
+  }
+});
+
 // GET /api/search?q=AAPL — search ticker symbol
 app.get('/api/search', async (req, res) => {
   const q = req.query.q;
@@ -152,6 +170,10 @@ app.get('/api/search', async (req, res) => {
     res.json([]);
   }
 });
+
+// Serve standalone HTML apps (watchlist.html, app.html) from project root
+const ROOT_DIR = path.join(__dirname, '..');
+app.use(express.static(ROOT_DIR, { extensions: ['html'] }));
 
 // Serve React frontend in production
 const FRONTEND_DIST = path.join(__dirname, '../frontend/dist');

@@ -293,30 +293,46 @@ function parseYahoo(d) {
   return null;
 }
 
+// When served from same origin as backend, use the server-side proxy.
+// Skip backend on file:// (offline/local use) and go straight to public APIs.
+const HAS_BACKEND = location.protocol === 'http:' || location.protocol === 'https:';
+
 async function fetchPrice(symbol) {
+  // Method 1: same-origin backend (uses yahoo-finance2 server-side, most reliable)
+  if (HAS_BACKEND) {
+    try {
+      const r = await fetch(`/api/quote/${encodeURIComponent(symbol)}`,
+        { signal: AbortSignal.timeout(9000) });
+      if (r.ok) {
+        const d = await r.json();
+        if (d.price > 0) return { price: d.price, change1d: d.change1d };
+      }
+    } catch {}
+  }
+
   const url1 = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
   const url2 = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
 
-  // Method 1: Yahoo Finance query1 (direct)
+  // Method 2: Yahoo Finance query1 (direct, often blocked by CORS)
   try {
     const r = await fetch(url1, { signal: AbortSignal.timeout(9000) });
     if (r.ok) { const p = parseYahoo(await r.json()); if (p) return p; }
   } catch {}
 
-  // Method 2: Yahoo Finance query2 (direct)
+  // Method 3: Yahoo Finance query2 (direct)
   try {
     const r = await fetch(url2, { signal: AbortSignal.timeout(9000) });
     if (r.ok) { const p = parseYahoo(await r.json()); if (p) return p; }
   } catch {}
 
-  // Method 3: corsproxy + Yahoo Finance
+  // Method 4: corsproxy + Yahoo Finance
   try {
     const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url1)}`,
       { signal: AbortSignal.timeout(9000) });
     if (r.ok) { const p = parseYahoo(await r.json()); if (p) return p; }
   } catch {}
 
-  // Method 4: allorigins + Yahoo Finance
+  // Method 5: allorigins + Yahoo Finance
   try {
     const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url1)}`,
       { signal: AbortSignal.timeout(9000) });

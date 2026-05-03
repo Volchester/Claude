@@ -509,7 +509,7 @@ function fetchWithTimeout(url, ms) {
 async function tryProxy(proxyFn, sourceUrl, parse) {
   const pUrl = proxyFn(sourceUrl);
   try {
-    const r = await fetchWithTimeout(pUrl, 4000);
+    const r = await fetchWithTimeout(pUrl, 7000);
     if (!r.ok) return null;
     const data = await r.json();
     const raw = pUrl.includes('allorigins') ? JSON.parse(data.contents) : data;

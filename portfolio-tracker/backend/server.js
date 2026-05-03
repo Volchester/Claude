@@ -136,22 +136,61 @@ app.delete('/api/portfolio/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Stooq returns yesterday's close in OHLC when queried after market close,
+// and intraday OHLC during the session. ^VIX style index symbols pass through;
+// equities get a `.us` suffix; dotted tickers (BRK.B) become hyphenated.
+async function quoteFromStooq(symbol) {
+  const s = symbol.startsWith('^')
+    ? symbol.toLowerCase()
+    : symbol.toLowerCase().replace('.', '-') + '.us';
+  const url = `https://stooq.com/q/l/?s=${s}&f=sd2t2ohlcv&h&e=csv`;
+  const r = await axios.get(url, { timeout: 8000, responseType: 'text' });
+  const lines = String(r.data).trim().split('\n');
+  if (lines.length < 2) return null;
+  const parts = lines[1].split(',');
+  // Symbol,Date,Time,Open,High,Low,Close,Volume — N/D rows mean unknown symbol
+  const close = parseFloat(parts[6]);
+  const open  = parseFloat(parts[3]);
+  if (!(close > 0)) return null;
+  return {
+    price: close,
+    change1d: open > 0 ? ((close - open) / open) * 100 : null,
+    name: symbol,
+    currency: 'USD',
+  };
+}
+
 // GET /api/quote/:symbol — fetch price + day change for watchlist
+// Tries Yahoo (rich data) first, then Stooq (works even when Yahoo blocks
+// outbound traffic from Railway/datacenter IPs).
 app.get('/api/quote/:symbol', async (req, res) => {
+  const symbol = req.params.symbol;
+
   try {
-    const quote = await yahooFinance.quote(req.params.symbol);
+    const quote = await yahooFinance.quote(symbol);
     const price = quote.regularMarketPrice;
     const prev  = quote.regularMarketPreviousClose;
-    if (!(price > 0)) return res.status(404).json({ error: 'No price' });
-    res.json({
-      price,
-      change1d: prev > 0 ? ((price - prev) / prev) * 100 : null,
-      name: quote.shortName || quote.longName || req.params.symbol,
-      currency: quote.currency || 'USD',
-    });
-  } catch {
-    res.status(404).json({ error: 'Not found' });
+    if (price > 0) {
+      return res.json({
+        price,
+        change1d: prev > 0 ? ((price - prev) / prev) * 100 : null,
+        name: quote.shortName || quote.longName || symbol,
+        currency: quote.currency || 'USD',
+        source: 'yahoo',
+      });
+    }
+  } catch (err) {
+    console.warn(`[quote] yahoo failed for ${symbol}: ${err.message}`);
   }
+
+  try {
+    const result = await quoteFromStooq(symbol);
+    if (result) return res.json({ ...result, source: 'stooq' });
+  } catch (err) {
+    console.warn(`[quote] stooq failed for ${symbol}: ${err.message}`);
+  }
+
+  res.status(404).json({ error: 'Not found' });
 });
 
 // GET /api/search?q=AAPL — search ticker symbol

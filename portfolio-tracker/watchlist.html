@@ -281,60 +281,49 @@ function load() {
 }
 function save(d) { localStorage.setItem('fv_watchlist', JSON.stringify(d)); }
 
-// ── Price fetching (Stooq via CORS proxy — bez registrace) ───────────────────
+// ── Price fetching (Yahoo Finance) ───────────────────────────────────────────
 let prices = {};
 let filter = 'all';
 
-function stooqSymbol(sym) {
-  return sym.includes('.') ? sym.toLowerCase() : sym.toLowerCase() + '.us';
+function parseYahoo(d) {
+  const meta = d?.chart?.result?.[0]?.meta;
+  const price = meta?.regularMarketPrice;
+  const prev  = meta?.chartPreviousClose ?? meta?.previousClose;
+  if (price > 0) return { price, change1d: prev > 0 ? ((price - prev) / prev) * 100 : null };
+  return null;
 }
 
 async function fetchPrice(symbol) {
-  const s = stooqSymbol(symbol);
-  const stooqJson = `https://stooq.com/q/l/?s=${s}&f=sd2t2ohlcv&h&e=json`;
-  const stooqCsv  = `https://stooq.com/q/l/?s=${s}&f=sd2t2ohlcv&h&e=csv`;
+  const url1 = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+  const url2 = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
 
-  // Method 1: allorigins + JSON
+  // Method 1: Yahoo Finance query1 (direct)
   try {
-    const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(stooqJson)}`,
+    const r = await fetch(url1, { signal: AbortSignal.timeout(9000) });
+    if (r.ok) { const p = parseYahoo(await r.json()); if (p) return p; }
+  } catch {}
+
+  // Method 2: Yahoo Finance query2 (direct)
+  try {
+    const r = await fetch(url2, { signal: AbortSignal.timeout(9000) });
+    if (r.ok) { const p = parseYahoo(await r.json()); if (p) return p; }
+  } catch {}
+
+  // Method 3: corsproxy + Yahoo Finance
+  try {
+    const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url1)}`,
+      { signal: AbortSignal.timeout(9000) });
+    if (r.ok) { const p = parseYahoo(await r.json()); if (p) return p; }
+  } catch {}
+
+  // Method 4: allorigins + Yahoo Finance
+  try {
+    const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url1)}`,
       { signal: AbortSignal.timeout(9000) });
     if (r.ok) {
       const w = await r.json();
-      const d = JSON.parse(w.contents);
-      const item = d?.symbols?.[0];
-      const close = parseFloat(item?.close ?? item?.c ?? 0);
-      const open  = parseFloat(item?.open  ?? item?.o ?? 0);
-      if (close > 0) return { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null };
-    }
-  } catch {}
-
-  // Method 2: corsproxy + JSON
-  try {
-    const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(stooqJson)}`,
-      { signal: AbortSignal.timeout(9000) });
-    if (r.ok) {
-      const d = await r.json();
-      const item = d?.symbols?.[0];
-      const close = parseFloat(item?.close ?? item?.c ?? 0);
-      const open  = parseFloat(item?.open  ?? item?.o ?? 0);
-      if (close > 0) return { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null };
-    }
-  } catch {}
-
-  // Method 3: allorigins + CSV (most reliable format)
-  try {
-    const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(stooqCsv)}`,
-      { signal: AbortSignal.timeout(9000) });
-    if (r.ok) {
-      const w = await r.json();
-      const lines = w.contents.trim().split('\n');
-      if (lines.length >= 2) {
-        const parts = lines[1].split(',');
-        // Symbol,Date,Time,Open,High,Low,Close,Volume
-        const close = parseFloat(parts[6]);
-        const open  = parseFloat(parts[3]);
-        if (close > 0) return { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null };
-      }
+      const p = parseYahoo(JSON.parse(w.contents));
+      if (p) return p;
     }
   } catch {}
 

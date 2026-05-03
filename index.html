@@ -494,113 +494,80 @@ function logoHtml(symbol) {
     onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="logo-fallback" style="background:${color}">${letter}</div>`;
 }
 
-async function fetchVix() {
-  const proxies = [
-    url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-    url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`
-  ];
+const PROXIES = [
+  url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`
+];
 
-  async function tryProxy(proxyFn, sourceUrl, parse) {
-    const pUrl = proxyFn(sourceUrl);
-    try {
-      const r = await fetch(pUrl, { signal: AbortSignal.timeout(8000) });
-      if (!r.ok) return null;
-      const data = await r.json();
-      const raw = pUrl.includes('allorigins') ? JSON.parse(data.contents) : data;
-      return parse(raw);
-    } catch { return null; }
-  }
+// AbortSignal.timeout() needs iOS Safari 16.4+; this works on older versions too.
+function fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
 
-  // 1. Stooq (multiple symbol variants)
-  for (const sym of ['vix', '^vix']) {
-    const stooqUrl = `https://stooq.com/q/l/?s=${sym}&f=sd2t2ohlcv&h&e=json`;
-    const parseStooq = raw => {
-      const item = raw?.symbols?.[0];
-      const close = parseFloat(item?.close ?? item?.c ?? 0);
-      const open  = parseFloat(item?.open  ?? item?.o ?? 0);
-      return close > 0 ? { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null } : null;
-    };
-    for (const proxy of proxies) {
-      const result = await tryProxy(proxy, stooqUrl, parseStooq);
+async function tryProxy(proxyFn, sourceUrl, parse) {
+  const pUrl = proxyFn(sourceUrl);
+  try {
+    const r = await fetchWithTimeout(pUrl, 8000);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const raw = pUrl.includes('allorigins') ? JSON.parse(data.contents) : data;
+    return parse(raw);
+  } catch { return null; }
+}
+
+const parseStooq = raw => {
+  const item = raw?.symbols?.[0];
+  const close = parseFloat(item?.close ?? item?.c ?? 0);
+  const open  = parseFloat(item?.open  ?? item?.o ?? 0);
+  return close > 0 ? { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null } : null;
+};
+
+const parseYhV7 = raw => {
+  const q = raw?.quoteResponse?.result?.[0];
+  return q?.regularMarketPrice > 0
+    ? { price: q.regularMarketPrice, change1d: q.regularMarketChangePercent ?? null }
+    : null;
+};
+
+const parseYhV8 = raw => {
+  const meta  = raw?.chart?.result?.[0]?.meta;
+  const price = meta?.regularMarketPrice;
+  const prev  = meta?.previousClose ?? meta?.chartPreviousClose;
+  return price > 0 ? { price, change1d: prev ? ((price - prev) / prev * 100) : null } : null;
+};
+
+async function trySources(sources) {
+  for (const { url, parse } of sources) {
+    for (const proxy of PROXIES) {
+      const result = await tryProxy(proxy, url, parse);
       if (result) return result;
     }
   }
-
-  // 2. Yahoo Finance v7
-  const yhUrl = 'https://query2.finance.yahoo.com/v7/finance/quote?symbols=%5EVIX';
-  const parseYhV7 = raw => {
-    const q = raw?.quoteResponse?.result?.[0];
-    return q?.regularMarketPrice > 0
-      ? { price: q.regularMarketPrice, change1d: q.regularMarketChangePercent ?? null }
-      : null;
-  };
-  for (const proxy of proxies) {
-    const result = await tryProxy(proxy, yhUrl, parseYhV7);
-    if (result) return result;
-  }
-
-  // 3. Yahoo Finance v8 chart
-  const yhChartUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=2d';
-  const parseYhV8 = raw => {
-    const meta  = raw?.chart?.result?.[0]?.meta;
-    const price = meta?.regularMarketPrice;
-    const prev  = meta?.previousClose ?? meta?.chartPreviousClose;
-    return price > 0 ? { price, change1d: prev ? ((price - prev) / prev * 100) : null } : null;
-  };
-  for (const proxy of proxies) {
-    const result = await tryProxy(proxy, yhChartUrl, parseYhV8);
-    if (result) return result;
-  }
-
   return null;
 }
 
+async function fetchVix() {
+  const sources = [
+    { url: `https://stooq.com/q/l/?s=vix&f=sd2t2ohlcv&h&e=json`,  parse: parseStooq },
+    { url: `https://stooq.com/q/l/?s=^vix&f=sd2t2ohlcv&h&e=json`, parse: parseStooq },
+    { url: `https://query2.finance.yahoo.com/v7/finance/quote?symbols=%5EVIX`,            parse: parseYhV7 },
+    { url: `https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=2d`, parse: parseYhV8 },
+  ];
+  return trySources(sources);
+}
+
 async function fetchPrice(symbol) {
-  const s = (symbol.startsWith('^') || symbol.includes('.') ? symbol : symbol + '.US').toLowerCase();
-  const stooqJson = `https://stooq.com/q/l/?s=${s}&f=sd2t2ohlcv&h&e=json`;
-  const stooqCsv  = `https://stooq.com/q/l/?s=${s}&f=sd2t2ohlcv&h&e=csv`;
-
-  try {
-    const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(stooqJson)}`,
-      { signal: AbortSignal.timeout(9000) });
-    if (r.ok) {
-      const w = await r.json();
-      const d = JSON.parse(w.contents);
-      const item = d?.symbols?.[0];
-      const close = parseFloat(item?.close ?? item?.c ?? 0);
-      const open  = parseFloat(item?.open  ?? item?.o ?? 0);
-      if (close > 0) return { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null };
-    }
-  } catch {}
-
-  try {
-    const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(stooqJson)}`,
-      { signal: AbortSignal.timeout(9000) });
-    if (r.ok) {
-      const d = await r.json();
-      const item = d?.symbols?.[0];
-      const close = parseFloat(item?.close ?? item?.c ?? 0);
-      const open  = parseFloat(item?.open  ?? item?.o ?? 0);
-      if (close > 0) return { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null };
-    }
-  } catch {}
-
-  try {
-    const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(stooqCsv)}`,
-      { signal: AbortSignal.timeout(9000) });
-    if (r.ok) {
-      const w = await r.json();
-      const lines = w.contents.trim().split('\n');
-      if (lines.length >= 2) {
-        const parts = lines[1].split(',');
-        const close = parseFloat(parts[6]);
-        const open  = parseFloat(parts[3]);
-        if (close > 0) return { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null };
-      }
-    }
-  } catch {}
-
-  return null;
+  const sym = symbol.toUpperCase();
+  const enc = encodeURIComponent(sym);
+  const stooqSym = sym.includes('.') ? sym.toLowerCase() : sym.toLowerCase() + '.us';
+  const sources = [
+    { url: `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${enc}`,                parse: parseYhV7 },
+    { url: `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=2d`,   parse: parseYhV8 },
+    { url: `https://stooq.com/q/l/?s=${stooqSym}&f=sd2t2ohlcv&h&e=json`,                      parse: parseStooq },
+  ];
+  return trySources(sources);
 }
 
 async function doRefresh() {

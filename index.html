@@ -538,22 +538,39 @@ const parseYhV8 = raw => {
   return price > 0 ? { price, change1d: prev ? ((price - prev) / prev * 100) : null } : null;
 };
 
+async function tryDirect(url, parse) {
+  try {
+    const r = await fetchWithTimeout(url, 8000);
+    if (!r.ok) return null;
+    return parse(await r.json());
+  } catch { return null; }
+}
+
+// Fire every attempt in parallel — first non-null result wins.
+// Tries each source directly (no proxy) + through both CORS proxies simultaneously.
 async function trySources(sources) {
-  for (const { url, parse } of sources) {
-    for (const proxy of PROXIES) {
-      const result = await tryProxy(proxy, url, parse);
-      if (result) return result;
+  return new Promise(resolve => {
+    const fns = sources.flatMap(({ url, parse }) => [
+      () => tryDirect(url, parse),
+      ...PROXIES.map(proxy => () => tryProxy(proxy, url, parse)),
+    ]);
+    let remaining = fns.length;
+    if (!remaining) { resolve(null); return; }
+    for (const fn of fns) {
+      fn().then(result => {
+        if (result) resolve(result);
+        if (--remaining === 0) resolve(null);
+      });
     }
-  }
-  return null;
+  });
 }
 
 async function fetchVix() {
   const sources = [
-    { url: `https://stooq.com/q/l/?s=vix&f=sd2t2ohlcv&h&e=json`,  parse: parseStooq },
-    { url: `https://stooq.com/q/l/?s=^vix&f=sd2t2ohlcv&h&e=json`, parse: parseStooq },
-    { url: `https://query2.finance.yahoo.com/v7/finance/quote?symbols=%5EVIX`,            parse: parseYhV7 },
+    { url: `https://query2.finance.yahoo.com/v7/finance/quote?symbols=%5EVIX`,              parse: parseYhV7 },
     { url: `https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=2d`, parse: parseYhV8 },
+    { url: `https://stooq.com/q/l/?s=vix&f=sd2t2ohlcv&h&e=json`,                            parse: parseStooq },
+    { url: `https://stooq.com/q/l/?s=^vix&f=sd2t2ohlcv&h&e=json`,                           parse: parseStooq },
   ];
   return trySources(sources);
 }
@@ -563,9 +580,9 @@ async function fetchPrice(symbol) {
   const enc = encodeURIComponent(sym);
   const stooqSym = sym.includes('.') ? sym.toLowerCase() : sym.toLowerCase() + '.us';
   const sources = [
-    { url: `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${enc}`,                parse: parseYhV7 },
-    { url: `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=2d`,   parse: parseYhV8 },
-    { url: `https://stooq.com/q/l/?s=${stooqSym}&f=sd2t2ohlcv&h&e=json`,                      parse: parseStooq },
+    { url: `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${enc}`,              parse: parseYhV7 },
+    { url: `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=2d`, parse: parseYhV8 },
+    { url: `https://stooq.com/q/l/?s=${stooqSym}&f=sd2t2ohlcv&h&e=json`,                    parse: parseStooq },
   ];
   return trySources(sources);
 }

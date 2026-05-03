@@ -509,7 +509,7 @@ function fetchWithTimeout(url, ms) {
 async function tryProxy(proxyFn, sourceUrl, parse) {
   const pUrl = proxyFn(sourceUrl);
   try {
-    const r = await fetchWithTimeout(pUrl, 8000);
+    const r = await fetchWithTimeout(pUrl, 4000);
     if (!r.ok) return null;
     const data = await r.json();
     const raw = pUrl.includes('allorigins') ? JSON.parse(data.contents) : data;
@@ -546,24 +546,23 @@ async function tryDirect(url, parse) {
   } catch { return null; }
 }
 
-// Per source: try direct call, then both proxies in parallel.
-// Sources are tried sequentially so a fast success short-circuits the rest.
+// All attempts (direct + both proxies for every source) fire in parallel.
+// First non-null result wins — fast sources win, slow/failed ones are ignored.
 async function trySources(sources) {
-  for (const { url, parse } of sources) {
-    const direct = await tryDirect(url, parse);
-    if (direct) return direct;
-    const fromProxy = await new Promise(resolve => {
-      let remaining = PROXIES.length;
-      for (const proxy of PROXIES) {
-        tryProxy(proxy, url, parse).then(r => {
-          if (r) resolve(r);
-          if (--remaining === 0) resolve(null);
-        });
-      }
-    });
-    if (fromProxy) return fromProxy;
-  }
-  return null;
+  return new Promise(resolve => {
+    const fns = sources.flatMap(({ url, parse }) => [
+      () => tryDirect(url, parse),
+      ...PROXIES.map(proxy => () => tryProxy(proxy, url, parse)),
+    ]);
+    let remaining = fns.length;
+    if (!remaining) { resolve(null); return; }
+    for (const fn of fns) {
+      fn().then(r => {
+        if (r) resolve(r);
+        if (--remaining === 0) resolve(null);
+      });
+    }
+  });
 }
 
 async function fetchVix() {

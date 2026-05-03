@@ -587,18 +587,64 @@ async function fetchPrice(symbol) {
   return trySources(sources);
 }
 
+// Fetch multiple symbols in one Yahoo v7 request — returns map symbol→{price,change1d}
+// or null if the request fails entirely.
+async function fetchBatch(symbols) {
+  if (!symbols.length) return null;
+  const enc = encodeURIComponent(symbols.join(','));
+  const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${enc}`;
+  const parse = raw => {
+    const results = raw?.quoteResponse?.result;
+    if (!Array.isArray(results) || !results.length) return null;
+    const map = {};
+    for (const q of results) {
+      if (q.symbol && q.regularMarketPrice > 0) {
+        map[q.symbol] = { price: q.regularMarketPrice, change1d: q.regularMarketChangePercent ?? null };
+      }
+    }
+    return Object.keys(map).length ? map : null;
+  };
+  return new Promise(resolve => {
+    const fns = [
+      () => tryDirect(url, parse),
+      ...PROXIES.map(proxy => () => tryProxy(proxy, url, parse)),
+    ];
+    let remaining = fns.length;
+    for (const fn of fns) {
+      fn().then(result => {
+        if (result) resolve(result);
+        if (--remaining === 0) resolve(null);
+      });
+    }
+  });
+}
+
 async function doRefresh() {
   const list = load();
   const btn = document.getElementById('refreshBtn');
   btn.innerHTML = '<span class="spin">↻</span>';
   btn.disabled = true;
   document.getElementById('updateTime').textContent = 'Obnovuji...';
-  const [vixResult, ...stockResults] = await Promise.all([
-    fetchVix(),
-    ...list.map(s => fetchPrice(s.symbol))
-  ]);
-  if (vixResult) vixData = vixResult;
-  list.forEach((s, i) => { if (stockResults[i]) prices[s.symbol] = stockResults[i]; });
+
+  const watchlistSyms = list.map(s => s.symbol);
+
+  // One batch request covers all stocks + VIX — avoids proxy rate limits
+  const batch = await fetchBatch(['^VIX', ...watchlistSyms]);
+  const got = {};
+
+  if (batch) {
+    if (batch['^VIX']) { vixData = batch['^VIX']; got['^VIX'] = true; }
+    watchlistSyms.forEach(sym => { if (batch[sym]) { prices[sym] = batch[sym]; got[sym] = true; } });
+  }
+
+  // Individual fallbacks only for symbols the batch didn't return
+  const missingSyms = watchlistSyms.filter(sym => !got[sym]);
+  if (missingSyms.length) {
+    const fallbacks = await Promise.all(missingSyms.map(sym => fetchPrice(sym)));
+    missingSyms.forEach((sym, i) => { if (fallbacks[i]) prices[sym] = fallbacks[i]; });
+  }
+  if (!got['^VIX']) vixData = await fetchVix();
+
   const now = new Date();
   document.getElementById('updateTime').textContent =
     `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;

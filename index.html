@@ -622,20 +622,6 @@ async function doRefresh() {
   btn.disabled = false;
   render();
 }
-  const missingSyms = watchlistSyms.filter(sym => !got[sym]);
-  if (missingSyms.length) {
-    const fallbacks = await Promise.all(missingSyms.map(sym => fetchPrice(sym)));
-    missingSyms.forEach((sym, i) => { if (fallbacks[i]) prices[sym] = fallbacks[i]; });
-  }
-  if (!got['^VIX']) vixData = await fetchVix();
-
-  const now = new Date();
-  document.getElementById('updateTime').textContent =
-    `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
-  btn.innerHTML = '↻';
-  btn.disabled = false;
-  render();
-}
 
 function renderVix() {
   const v = vixData?.price ?? null;

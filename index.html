@@ -508,21 +508,30 @@ function fetchWithTimeout(url, ms) {
   return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
 }
 
+function dbg(msg) {
+  console.log('[WL]', msg);
+  const el = document.getElementById('dbgLog');
+  if (el) { el.textContent += msg + '\n'; el.scrollTop = el.scrollHeight; }
+}
+
 async function tryProxy(proxyFn, sourceUrl, parse) {
   const pUrl = proxyFn(sourceUrl);
+  const label = pUrl.replace(/https?:\/\//, '').slice(0, 40);
   try {
     const r = await fetchWithTimeout(pUrl, 5000);
-    if (!r.ok) return null;
+    if (!r.ok) { dbg(`FAIL ${r.status} ${label}`); return null; }
     const data = await r.json();
     const raw = pUrl.includes('allorigins') ? JSON.parse(data.contents) : data;
-    return parse(raw);
-  } catch { return null; }
+    const result = parse(raw);
+    dbg(result ? `OK   ${label}` : `NULL ${label}`);
+    return result;
+  } catch(e) { dbg(`ERR  ${e.message?.slice(0,30)} | ${label}`); return null; }
 }
 
 const parseStooq = raw => {
   const item = raw?.symbols?.[0];
-  const close = parseFloat(item?.close ?? item?.c ?? 0);
-  const open  = parseFloat(item?.open  ?? item?.o ?? 0);
+  const close = parseFloat(item?.Close ?? item?.close ?? item?.c ?? 0);
+  const open  = parseFloat(item?.Open  ?? item?.open  ?? item?.o ?? 0);
   return close > 0 ? { price: close, change1d: open > 0 ? ((close - open) / open) * 100 : null } : null;
 };
 
@@ -1120,5 +1129,6 @@ function closePlanAc() {
 render();
 doRefresh();
 </script>
+<div id="dbgLog" style="position:fixed;bottom:0;left:0;right:0;background:#0a0a0a;color:#0f0;font:11px monospace;padding:4px 8px;max-height:120px;overflow-y:auto;z-index:999;white-space:pre;opacity:0.9"></div>
 </body>
 </html>

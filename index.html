@@ -496,7 +496,9 @@ function logoHtml(symbol) {
 
 const PROXIES = [
   url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`
+  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  url => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(url)}`,
 ];
 
 // AbortSignal.timeout() needs iOS Safari 16.4+; this works on older versions too.
@@ -509,7 +511,7 @@ function fetchWithTimeout(url, ms) {
 async function tryProxy(proxyFn, sourceUrl, parse) {
   const pUrl = proxyFn(sourceUrl);
   try {
-    const r = await fetchWithTimeout(pUrl, 7000);
+    const r = await fetchWithTimeout(pUrl, 5000);
     if (!r.ok) return null;
     const data = await r.json();
     const raw = pUrl.includes('allorigins') ? JSON.parse(data.contents) : data;
@@ -540,29 +542,24 @@ const parseYhV8 = raw => {
 
 async function tryDirect(url, parse) {
   try {
-    const r = await fetchWithTimeout(url, 5000);
+    const r = await fetchWithTimeout(url, 3000);
     if (!r.ok) return null;
     return parse(await r.json());
   } catch { return null; }
 }
 
-// All attempts (direct + both proxies for every source) fire in parallel.
-// First non-null result wins — fast sources win, slow/failed ones are ignored.
+// Try direct first, then each proxy sequentially (all sources per proxy in parallel).
+// Sequential proxy strategy prevents rate-limiting from too many concurrent requests.
 async function trySources(sources) {
-  return new Promise(resolve => {
-    const fns = sources.flatMap(({ url, parse }) => [
-      () => tryDirect(url, parse),
-      ...PROXIES.map(proxy => () => tryProxy(proxy, url, parse)),
-    ]);
-    let remaining = fns.length;
-    if (!remaining) { resolve(null); return; }
-    for (const fn of fns) {
-      fn().then(r => {
-        if (r) resolve(r);
-        if (--remaining === 0) resolve(null);
-      });
-    }
-  });
+  const directResults = await Promise.all(sources.map(s => tryDirect(s.url, s.parse)));
+  const directHit = directResults.find(r => r != null) ?? null;
+  if (directHit) return directHit;
+  for (const proxy of PROXIES) {
+    const results = await Promise.all(sources.map(s => tryProxy(proxy, s.url, s.parse)));
+    const hit = results.find(r => r != null) ?? null;
+    if (hit) return hit;
+  }
+  return null;
 }
 
 async function fetchVix() {

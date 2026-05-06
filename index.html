@@ -496,7 +496,7 @@ function logoHtml(symbol) {
 
 const PROXIES = [
   url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
   url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
   url => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(url)}`,
   url => `https://cors.eu.org/${url}`,
@@ -567,18 +567,23 @@ async function tryDirect(url, parse) {
   } catch { return null; }
 }
 
-// Try direct first, then each proxy sequentially (all sources per proxy in parallel).
-// Sequential proxy strategy prevents rate-limiting from too many concurrent requests.
+// Try direct first, then all 4 proxies race in parallel — fastest valid response wins.
 async function trySources(sources) {
-  const directResults = await Promise.all(sources.map(s => tryDirect(s.url, s.parse)));
-  const directHit = directResults.find(r => r != null) ?? null;
-  if (directHit) return directHit;
-  for (const proxy of PROXIES) {
-    const results = await Promise.all(sources.map(s => tryProxy(proxy, s.url, s.parse)));
-    const hit = results.find(r => r != null) ?? null;
-    if (hit) return hit;
-  }
-  return null;
+  return new Promise(resolve => {
+    const fns = sources.flatMap(({ url, parse }) => [
+      () => tryDirect(url, parse),
+      ...PROXIES.map(proxy => () => tryProxy(proxy, url, parse)),
+    ]);
+    let remaining = fns.length;
+    let done = false;
+    if (!remaining) { resolve(null); return; }
+    for (const fn of fns) {
+      fn().then(r => {
+        if (r && !done) { done = true; resolve(r); }
+        if (--remaining === 0 && !done) resolve(null);
+      }).catch(() => { if (--remaining === 0 && !done) resolve(null); });
+    }
+  });
 }
 
 async function fetchVix() {
@@ -610,23 +615,15 @@ async function doRefresh() {
   btn.disabled = true;
   document.getElementById('updateTime').textContent = 'Obnovuji...';
 
-  // VIX + first 3 stocks simultaneously, then remaining stocks in chunks of 3.
-  // Chunks avoid hammering CORS proxies with too many concurrent requests.
-  const CHUNK = 3;
-  const chunks = [];
-  for (let i = 0; i < list.length; i += CHUNK) chunks.push(list.slice(i, i + CHUNK));
-
-  const [vixResult, ...firstResults] = await Promise.all([
-    fetchVix(),
-    ...(chunks[0] ?? []).map(s => fetchPrice(s.symbol)),
-  ]);
+  // Fetch VIX then each stock one by one — sequential symbols prevent hammering
+  // any single proxy, while all 4 proxies race per symbol for fastest response.
+  const vixResult = await fetchVix();
   if (vixResult) vixData = vixResult;
-  (chunks[0] ?? []).forEach((s, i) => { if (firstResults[i]) prices[s.symbol] = firstResults[i]; });
   render();
 
-  for (const chunk of chunks.slice(1)) {
-    const results = await Promise.all(chunk.map(s => fetchPrice(s.symbol)));
-    chunk.forEach((s, i) => { if (results[i]) prices[s.symbol] = results[i]; });
+  for (const s of list) {
+    const result = await fetchPrice(s.symbol);
+    if (result) prices[s.symbol] = result;
     render();
   }
 

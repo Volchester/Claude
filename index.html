@@ -669,6 +669,16 @@ async function fetchPrice(symbol) {
   return trySources(sources);
 }
 
+// Primary source: prices.json updated every 10 min by GitHub Actions (server-side
+// fetch from Yahoo Finance, no CORS). Same-origin so works without proxies.
+async function fetchAllPrices() {
+  try {
+    const r = await fetchWithTimeout(`./prices.json?_=${Date.now()}`, 5000);
+    if (!r.ok) { dbg(`prices.json HTTP ${r.status}`); return null; }
+    return await r.json();
+  } catch(e) { dbg(`prices.json ERR ${e.message?.slice(0,30)}`); return null; }
+}
+
 async function doRefresh() {
   const list = load();
   const btn = document.getElementById('refreshBtn');
@@ -676,21 +686,36 @@ async function doRefresh() {
   btn.disabled = true;
   document.getElementById('updateTime').textContent = 'Obnovuji...';
 
-  // Fetch VIX then each stock one by one — sequential symbols prevent hammering
-  // any single proxy, while all 4 proxies race per symbol for fastest response.
-  const vixResult = await fetchVix();
-  if (vixResult) vixData = vixResult;
-  render();
+  // 1. Try GitHub-hosted prices.json (covers most popular tickers)
+  const data = await fetchAllPrices();
+  if (data?.prices) {
+    Object.assign(prices, data.prices);
+    if (data.prices['^VIX']) vixData = data.prices['^VIX'];
+    const t = new Date(data.updated);
+    const ageMin = Math.round((Date.now() - t.getTime()) / 60000);
+    const ts = `${t.getHours()}:${String(t.getMinutes()).padStart(2,'0')}`;
+    document.getElementById('updateTime').textContent = ageMin > 30 ? `${ts} ⚠` : ts;
+    dbg(`prices.json OK (${Object.keys(data.prices).length} symbols, ${ageMin}min old)`);
+    render();
+  }
 
+  // 2. For any symbol still missing, try Finnhub (if key set) then proxies
   for (const s of list) {
+    if (prices[s.symbol]) continue;
     const result = await fetchPrice(s.symbol);
     if (result) prices[s.symbol] = result;
     render();
   }
+  if (!vixData) {
+    const v = await fetchVix();
+    if (v) vixData = v;
+  }
 
-  const now = new Date();
-  document.getElementById('updateTime').textContent =
-    `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+  if (!data) {
+    const now = new Date();
+    document.getElementById('updateTime').textContent =
+      `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+  }
   btn.innerHTML = '↻';
   btn.disabled = false;
   render();

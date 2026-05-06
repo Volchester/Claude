@@ -290,6 +290,7 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
   <div class="header-right">
     <span class="update-time" id="updateTime">—</span>
     <button class="btn btn-ghost" id="refreshBtn" onclick="doRefresh()">↻</button>
+    <button class="btn btn-ghost" id="settingsBtn" onclick="openSettings()" title="Nastavení" style="padding:0.5rem 0.625rem">⚙</button>
     <button class="btn btn-accent" id="addBtn" onclick="handleAdd()">+ Přidat</button>
   </div>
 </header>
@@ -421,6 +422,26 @@ main { max-width: 680px; margin: 0 auto; padding: 1rem; }
   </div>
 </div>
 
+<!-- Settings modal -->
+<div class="overlay" id="overlaySettings" onclick="if(event.target===this)closeSettings()">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h2>⚙ Nastavení</h2>
+    <div class="field">
+      <label>Finnhub API klíč</label>
+      <input id="settingsKey" type="text" placeholder="Vložte klíč z finnhub.io…" autocomplete="off" spellcheck="false">
+      <div class="field-hint">
+        Zdarma na <strong style="color:var(--text)">finnhub.io</strong> → Register → Dashboard → API key.
+        Bez klíče ceny nefungují (Yahoo Finance zablokoval přístup z prohlížeče).
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeSettings()">Zrušit</button>
+      <button class="btn btn-accent" onclick="saveSettings()">Uložit a obnovit</button>
+    </div>
+  </div>
+</div>
+
 <script>
 function load() {
   try { return JSON.parse(localStorage.getItem('fv_watchlist') || '[]'); } catch { return []; }
@@ -494,6 +515,42 @@ function logoHtml(symbol) {
     onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="logo-fallback" style="background:${color}">${letter}</div>`;
 }
 
+// ── Settings ──
+function loadKey() { return localStorage.getItem('fv_finnhub_key') || ''; }
+function openSettings() {
+  document.getElementById('settingsKey').value = loadKey();
+  document.getElementById('overlaySettings').classList.add('open');
+}
+function closeSettings() { document.getElementById('overlaySettings').classList.remove('open'); }
+function saveSettings() {
+  const k = document.getElementById('settingsKey').value.trim();
+  localStorage.setItem('fv_finnhub_key', k);
+  closeSettings();
+  prices = {}; vixData = null; render();
+  doRefresh();
+}
+
+// ── Finnhub (direct CORS, no proxy needed) ──
+const parseFinnhub = raw => {
+  const price = raw?.c;
+  const prev = raw?.pc;
+  return price > 0 ? { price, change1d: prev > 0 ? ((price - prev) / prev * 100) : null } : null;
+};
+
+async function fetchFinnhub(symbol) {
+  const key = loadKey();
+  if (!key) return null;
+  const sym = encodeURIComponent(symbol.toUpperCase());
+  try {
+    const r = await fetchWithTimeout(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${key}`, 6000);
+    if (!r.ok) return null;
+    const result = parseFinnhub(await r.json());
+    dbg(result ? `FH OK  ${symbol}` : `FH NUL ${symbol}`);
+    return result;
+  } catch(e) { dbg(`FH ERR ${symbol} ${e.message?.slice(0,20)}`); return null; }
+}
+
+// ── CORS proxy fallbacks ──
 const PROXIES = [
   url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
   url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
@@ -587,6 +644,8 @@ async function trySources(sources) {
 }
 
 async function fetchVix() {
+  const fh = await fetchFinnhub('^VIX');
+  if (fh) return fh;
   const sources = [
     { url: `https://query2.finance.yahoo.com/v7/finance/quote?symbols=%5EVIX`,              parse: parseYhV7 },
     { url: `https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=2d`, parse: parseYhV8 },
@@ -597,6 +656,8 @@ async function fetchVix() {
 }
 
 async function fetchPrice(symbol) {
+  const fh = await fetchFinnhub(symbol);
+  if (fh) return fh;
   const sym = symbol.toUpperCase();
   const enc = encodeURIComponent(sym);
   const stooqSym = sym.includes('.') ? sym.toLowerCase() : sym.toLowerCase() + '.us';

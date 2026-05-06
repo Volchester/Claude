@@ -496,9 +496,12 @@ function logoHtml(symbol) {
 
 const PROXIES = [
   url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
   url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
   url => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(url)}`,
+  url => `https://cors.eu.org/${url}`,
+  url => `https://api.cors.lol/?url=${encodeURIComponent(url)}`,
+  url => `https://proxy.cors.sh/${url}`,
 ];
 
 // AbortSignal.timeout() needs iOS Safari 16.4+; this works on older versions too.
@@ -518,10 +521,17 @@ async function tryProxy(proxyFn, sourceUrl, parse) {
   const pUrl = proxyFn(sourceUrl);
   const label = pUrl.replace(/https?:\/\//, '').slice(0, 40);
   try {
-    const r = await fetchWithTimeout(pUrl, 5000);
+    const r = await fetchWithTimeout(pUrl, 6000);
     if (!r.ok) { dbg(`FAIL ${r.status} ${label}`); return null; }
-    const data = await r.json();
-    const raw = pUrl.includes('allorigins') ? JSON.parse(data.contents) : data;
+    const text = await r.text();
+    // Try direct JSON first; if that fails, try allorigins envelope { contents: "..." }
+    let raw;
+    try {
+      raw = JSON.parse(text);
+      if (raw && typeof raw === 'object' && typeof raw.contents === 'string') {
+        try { raw = JSON.parse(raw.contents); } catch {}
+      }
+    } catch { dbg(`PARSE ${label}`); return null; }
     const result = parse(raw);
     dbg(result ? `OK   ${label}` : `NULL ${label}`);
     return result;

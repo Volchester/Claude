@@ -544,10 +544,8 @@ async function fetchFinnhub(symbol) {
   try {
     const r = await fetchWithTimeout(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${key}`, 6000);
     if (!r.ok) return null;
-    const result = parseFinnhub(await r.json());
-    dbg(result ? `FH OK  ${symbol}` : `FH NUL ${symbol}`);
-    return result;
-  } catch(e) { dbg(`FH ERR ${symbol} ${e.message?.slice(0,20)}`); return null; }
+    return parseFinnhub(await r.json());
+  } catch(e) { return null; }
 }
 
 // ── CORS proxy fallbacks ──
@@ -568,11 +566,6 @@ function fetchWithTimeout(url, ms) {
   return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
 }
 
-function dbg(msg) {
-  console.log('[WL]', msg);
-  const el = document.getElementById('dbgLog');
-  if (el) { el.textContent += msg + '\n'; el.scrollTop = el.scrollHeight; }
-}
 
 async function tryProxy(proxyFn, sourceUrl, parse) {
   const pUrl = proxyFn(sourceUrl);
@@ -588,11 +581,9 @@ async function tryProxy(proxyFn, sourceUrl, parse) {
       if (raw && typeof raw === 'object' && typeof raw.contents === 'string') {
         try { raw = JSON.parse(raw.contents); } catch {}
       }
-    } catch { dbg(`PARSE ${label}`); return null; }
-    const result = parse(raw);
-    dbg(result ? `OK   ${label}` : `NULL ${label}`);
-    return result;
-  } catch(e) { dbg(`ERR  ${e.message?.slice(0,30)} | ${label}`); return null; }
+    } catch { return null; }
+    return parse(raw);
+  } catch(e) { return null; }
 }
 
 const parseStooq = raw => {
@@ -674,9 +665,9 @@ async function fetchPrice(symbol) {
 async function fetchAllPrices() {
   try {
     const r = await fetchWithTimeout(`./prices.json?_=${Date.now()}`, 5000);
-    if (!r.ok) { dbg(`prices.json HTTP ${r.status}`); return null; }
+    if (!r.ok) return null;
     return await r.json();
-  } catch(e) { dbg(`prices.json ERR ${e.message?.slice(0,30)}`); return null; }
+  } catch(e) { return null; }
 }
 
 async function doRefresh() {
@@ -695,7 +686,6 @@ async function doRefresh() {
     const ageMin = Math.round((Date.now() - t.getTime()) / 60000);
     const ts = `${t.getHours()}:${String(t.getMinutes()).padStart(2,'0')}`;
     document.getElementById('updateTime').textContent = ageMin > 30 ? `${ts} ⚠` : ts;
-    dbg(`prices.json OK (${Object.keys(data.prices).length} symbols, ${ageMin}min old)`);
     render();
   }
 
@@ -1222,6 +1212,6 @@ function closePlanAc() {
 render();
 doRefresh();
 </script>
-<div id="dbgLog" style="position:fixed;bottom:0;left:0;right:0;background:#0a0a0a;color:#0f0;font:11px monospace;padding:4px 8px;max-height:120px;overflow-y:auto;z-index:999;white-space:pre;opacity:0.9"></div>
+
 </body>
 </html>

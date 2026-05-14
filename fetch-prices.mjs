@@ -52,8 +52,9 @@ const SYMBOLS = [
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 async function fetchYahooBatch(symbols) {
-  // yahoo-finance2 handles cookie/crumb auth automatically
   const out = {};
   try {
     const quotes = await yf.quote(symbols, {}, { validateResult: false });
@@ -73,7 +74,6 @@ async function fetchYahooBatch(symbols) {
 }
 
 function stooqSymbol(symbol) {
-  // ^VIX → vix, BTC-USD → btcusd, AAPL → aapl.us, BRK-B → brk-b.us
   if (symbol.startsWith('^')) return symbol.slice(1).toLowerCase();
   if (symbol.includes('-USD')) return symbol.replace(/-USD$/, '').toLowerCase() + 'usd';
   return symbol.toLowerCase() + '.us';
@@ -82,7 +82,10 @@ function stooqSymbol(symbol) {
 async function fetchStooq(symbol) {
   const sSym = stooqSymbol(symbol);
   const url = `https://stooq.com/q/l/?s=${encodeURIComponent(sSym)}&f=sd2t2ohlcv&h&e=json`;
-  const r = await fetch(url, { headers: { 'User-Agent': UA } });
+  const r = await fetch(url, {
+    headers: { 'User-Agent': UA },
+    signal: AbortSignal.timeout(10000),
+  });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const data = await r.json();
   const item = data?.symbols?.[0];
@@ -99,7 +102,10 @@ async function fetchStooq(symbol) {
 async function fetchYahooChart(symbol) {
   const enc = encodeURIComponent(symbol);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?interval=1d&range=5d`;
-  const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } });
+  const r = await fetch(url, {
+    headers: { 'User-Agent': UA, 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const data = await r.json();
   const meta = data?.chart?.result?.[0]?.meta;
@@ -120,42 +126,41 @@ const result = {
 console.log(`Fetching ${SYMBOLS.length} symbols...`);
 const start = Date.now();
 
-// Step 1: Yahoo batch (handles cookies)
+// Step 1: Yahoo Finance batch via yahoo-finance2 (handles cookie/crumb auth)
 console.log('Step 1: Yahoo batch via yahoo-finance2...');
 Object.assign(result.prices, await fetchYahooBatch(SYMBOLS));
 let got = Object.keys(result.prices).length;
 console.log(`  ${got}/${SYMBOLS.length}`);
 
-// Step 2: For missing symbols, try direct chart endpoint
+// Step 2: Yahoo chart direct for missing, in small batches to avoid throttling
 let missing = SYMBOLS.filter(s => !result.prices[s]);
 if (missing.length) {
-  console.log(`Step 2: Direct chart endpoint for ${missing.length} missing...`);
-  await Promise.all(missing.map(async sym => {
-    try {
-      const d = await fetchYahooChart(sym);
-      if (d) result.prices[sym] = d;
-    } catch (e) { /* ignore */ }
-  }));
+  console.log(`Step 2: Yahoo chart for ${missing.length} missing...`);
+  for (let i = 0; i < missing.length; i += 5) {
+    const batch = missing.slice(i, i + 5);
+    await Promise.all(batch.map(async sym => {
+      try {
+        const d = await fetchYahooChart(sym);
+        if (d) result.prices[sym] = d;
+      } catch {}
+    }));
+    if (i + 5 < missing.length) await sleep(500);
+  }
   got = Object.keys(result.prices).length;
   console.log(`  ${got}/${SYMBOLS.length}`);
 }
 
-// Step 3: For still missing, try Stooq
+// Step 3: Stooq sequential with 300ms delay (rate-limit friendly)
 missing = SYMBOLS.filter(s => !result.prices[s]);
 if (missing.length) {
-  console.log(`Step 3: Stooq fallback for ${missing.length} missing...`);
-  const queue = [...missing];
-  async function worker() {
-    while (queue.length) {
-      const sym = queue.shift();
-      if (!sym) break;
-      try {
-        const d = await fetchStooq(sym);
-        if (d) result.prices[sym] = d;
-      } catch (e) { /* ignore */ }
-    }
+  console.log(`Step 3: Stooq sequential for ${missing.length} missing...`);
+  for (const sym of missing) {
+    try {
+      const d = await fetchStooq(sym);
+      if (d) result.prices[sym] = d;
+    } catch {}
+    await sleep(300);
   }
-  await Promise.all(Array.from({ length: 6 }, worker));
   got = Object.keys(result.prices).length;
   console.log(`  ${got}/${SYMBOLS.length}`);
 }
@@ -163,11 +168,17 @@ if (missing.length) {
 const took = ((Date.now() - start) / 1000).toFixed(1);
 console.log(`Done: ${got}/${SYMBOLS.length} in ${took}s`);
 
-// Safety: don't overwrite a good prices.json with empty data
-if (got === 0) {
-  console.error('FATAL: No prices fetched. Aborting to keep existing prices.json.');
+if (got > 0) {
+  fs.writeFileSync('prices.json', JSON.stringify(result, null, 2));
+  console.log('Wrote prices.json');
+} else if (fs.existsSync('prices.json')) {
+  // 0 prices – preserve existing data but update timestamp so we can see the
+  // workflow is still running (timestamp freshness ≠ price freshness in this case)
+  const existing = JSON.parse(fs.readFileSync('prices.json', 'utf8'));
+  existing.updated = new Date().toISOString();
+  fs.writeFileSync('prices.json', JSON.stringify(existing, null, 2));
+  console.log('WARNING: 0 prices fetched. Preserved existing prices, updated timestamp.');
+} else {
+  console.error('FATAL: No prices and no existing prices.json.');
   process.exit(1);
 }
-
-fs.writeFileSync('prices.json', JSON.stringify(result, null, 2));
-console.log('Wrote prices.json');

@@ -679,24 +679,27 @@ async function doRefresh() {
 
   // 1. Try GitHub-hosted prices.json (covers most popular tickers)
   const data = await fetchAllPrices();
+  let pricesStale = false;
   if (data?.prices) {
     Object.assign(prices, data.prices);
     if (data.prices['^VIX']) vixData = data.prices['^VIX'];
     const t = new Date(data.updated);
     const ageMin = Math.round((Date.now() - t.getTime()) / 60000);
+    pricesStale = ageMin > 60;
     const ts = `${t.getHours()}:${String(t.getMinutes()).padStart(2,'0')}`;
     document.getElementById('updateTime').textContent = ageMin > 30 ? `${ts} ⚠` : ts;
     render();
   }
 
-  // 2. For any symbol still missing, try Finnhub (if key set) then proxies
+  // 2. Refresh via Finnhub/proxies: always for missing symbols,
+  //    and also for watchlist symbols when prices.json is stale (>60 min)
   for (const s of list) {
-    if (prices[s.symbol]) continue;
+    if (prices[s.symbol] && !pricesStale) continue;
     const result = await fetchPrice(s.symbol);
     if (result) prices[s.symbol] = result;
     render();
   }
-  if (!vixData) {
+  if (!vixData || pricesStale) {
     const v = await fetchVix();
     if (v) vixData = v;
   }

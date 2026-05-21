@@ -1,12 +1,18 @@
 name: Fetch Stock Prices
 
 on:
+  schedule:
+    - cron: '0 * * * *'  # Hourly backup - restarts chain if broken
+  workflow_dispatch:
   push:
     branches: [gh-pages]
-  workflow_dispatch:
+    paths:
+      - 'fetch-prices.mjs'
+      - '.github/workflows/fetch-prices.yml'
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: fetch-prices
@@ -16,10 +22,9 @@ jobs:
   fetch:
     runs-on: ubuntu-latest
     steps:
-      # When triggered by the bot's own prices.json commit, wait 5 minutes
-      # so updates are spaced ~5-6 min apart instead of running continuously.
-      - name: Wait (self-triggered runs only)
-        if: "contains(github.event.head_commit.message, 'Update prices.json')"
+      # Only chain-triggered (workflow_dispatch) runs sleep — push and schedule run immediately
+      - name: Wait (chain run)
+        if: github.event_name == 'workflow_dispatch'
         run: sleep 300
 
       - uses: actions/checkout@v4
@@ -44,6 +49,11 @@ jobs:
           if git diff --quiet --cached; then
             echo "No changes"
           else
-            git commit -m "Update prices.json"
+            git commit -m "Update prices.json [skip ci]"
             git push
           fi
+
+      - name: Trigger next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run fetch-prices.yml --ref gh-pages

@@ -1,5 +1,5 @@
 {
-  "updated": "2026-05-22T10:56:24.036Z",
+  "updated": "2026-05-22T11:01:40.455Z",
   "prices": {
     "AAPL": {
       "price": 304.99,
@@ -802,8 +802,8 @@
       "change1d": 0.216741
     },
     "^VIX": {
-      "price": 17.14,
-      "change1d": 2.267298
+      "price": 17.13,
+      "change1d": 2.2076309
     },
     "^GSPC": {
       "price": 7445.72,
@@ -822,16 +822,16 @@
       "change1d": 0.9259678
     },
     "BTC-USD": {
-      "price": 77196.03,
-      "change1d": 0.10687355
+      "price": 77235.19,
+      "change1d": 0.16091838
     },
     "ETH-USD": {
-      "price": 2119.95,
-      "change1d": 0.37641814
+      "price": 2121.02,
+      "change1d": 0.3862022
     },
     "SOL-USD": {
-      "price": 86.87,
-      "change1d": 1.4007291
+      "price": 86.88,
+      "change1d": 1.602146
     }
   }
 }

@@ -1,5 +1,5 @@
 {
-  "updated": "2026-05-23T04:53:25.695Z",
+  "updated": "2026-05-23T04:58:45.636Z",
   "prices": {
     "AAPL": {
       "price": 308.82,
@@ -822,16 +822,16 @@
       "change1d": 0.9063791
     },
     "BTC-USD": {
-      "price": 75440.94,
-      "change1d": -2.754512
+      "price": 75424.83,
+      "change1d": -2.7752776
     },
     "ETH-USD": {
-      "price": 2064.53,
-      "change1d": -3.1451013
+      "price": 2064.21,
+      "change1d": -3.160117
     },
     "SOL-USD": {
-      "price": 84.32,
-      "change1d": -2.968932
+      "price": 84.3,
+      "change1d": -2.991943
     }
   }
 }
